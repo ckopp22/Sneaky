@@ -4,7 +4,7 @@ const C = {
   VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 20, COOP_LEVEL_COUNT: 10, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_ACCEL: 60,
+  GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(217,230,255,0.16)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -15,6 +15,8 @@ const rad = (d) => d * Math.PI / 180;
 const rand = (a, b) => a + Math.random() * (b - a);
 const lerp = (a, b, t) => a + (b - a) * t;
 const $ = (id) => document.getElementById(id);
+
+const DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
 
 // ---------- assets ----------
 const IMG = {};
@@ -68,6 +70,23 @@ const audio = (() => {
   };
   a.playAlert = () => play(alert);
   a.playWin = () => play(win);
+  a.playCelebrate = () => {
+    if (!a.sfx || !a.active) return;
+    try {
+      const ac = a.ac || (a.ac = new (window.AudioContext || window.webkitAudioContext)());
+      const t0 = ac.currentTime + 0.1;
+      [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach((f, i) => {
+        const t = t0 + i * 0.13, last = i === 7;
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = 'triangle'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + (last ? 1.2 : 0.25));
+        o.connect(g).connect(ac.destination);
+        o.start(t); o.stop(t + (last ? 1.3 : 0.3));
+      });
+    } catch { /* ignore */ }
+  };
   a.setRolling = (on) => {
     on = on && a.sfx && a.active;
     if (on === a.rolling) return;
@@ -137,12 +156,12 @@ function makeVision(x, y, fov, range, cone) {
 }
 
 function makeGuard(d, tile) {
-  const wander = !!d.wander;
+  const wander = !!d.wander || S.roam;
   const path = (d.wander ?? d.path).map((p) => ({ x: (p[0] + 0.5) * tile, y: (p[1] + 0.5) * tile }));
-  const g = makeVision(path[0].x, path[0].y, d.fov ?? C.GUARD_FOV, d.range ?? C.GUARD_RANGE, C.VISION);
+  const g = makeVision(path[0].x, path[0].y, Math.min((d.fov ?? C.GUARD_FOV) * (1 + 0.5 * (S.diff - 1)), 120), (d.range ?? C.GUARD_RANGE) * S.diff, C.VISION);
   Object.assign(g, { kind: 'guard', path, speed: d.speed ?? C.GUARD_SPEED, pause: d.pause ?? C.GUARD_PAUSE,
-    erratic: d.erratic ?? 0, wander, vel: 0, cur: 0, last: -1, target: -1, next: 1, dir: 1, pauseLeft: 0, pauseTotal: 1, lookBase: 0, mult: 1, multLeft: 0 });
-  if (!wander && path.length > 1) g.ang = Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x);
+    erratic: d.erratic ?? 0, wander, vel: 0, cur: 0, last: -1, destIdx: -1, dest: null, route: null, next: 1, dir: 1, pauseLeft: 0, pauseTotal: 1, lookBase: 0, mult: 1, multLeft: 0 });
+  if (!d.wander && path.length > 1) g.ang = Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x);
   return g;
 }
 
@@ -151,10 +170,10 @@ function makeLight(d, tile) {
   const period = d.period ?? 4;
   Object.assign(l, { kind: d.type ?? 'sweep', period, time: d.offset ?? 0 });
   if (l.kind === 'blink') {
-    Object.assign(l, { fov: 360, range: d.radius ?? 80, onTime: d.on ?? period / 2 });
+    Object.assign(l, { fov: 360, range: (d.radius ?? 80) * (1 + 1.3 * (S.diff - 1)), onTime: d.on ?? period / 2 });
   } else {
     const arc = d.arc ?? [0, 180];
-    Object.assign(l, { arcFrom: arc[0], arcTo: arc[1], fov: d.fov ?? 40, range: d.range ?? 140 });
+    Object.assign(l, { arcFrom: arc[0], arcTo: arc[1], fov: d.fov ?? 40, range: (d.range ?? 140) * S.diff });
   }
   return l;
 }
@@ -168,13 +187,83 @@ function clearLine(a, b) {
   return [-8, 0, 8].every((o) => !raycast(a.x + nx * o, a.y + ny * o, b.x + nx * o, b.y + ny * o));
 }
 
-function pickWaypoint(g) {
-  const here = g.path[g.cur];
+function buildNav(tile) {
+  const cols = Math.ceil(S.map.w / tile), rows = Math.ceil(S.map.h / tile), blocked = new Uint8Array(cols * rows);
+  for (const r of S.walls) {
+    for (let y = Math.floor(r.y / tile); y < Math.ceil((r.y + r.h) / tile); y++) {
+      for (let x = Math.floor(r.x / tile); x < Math.ceil((r.x + r.w) / tile); x++) {
+        if (x >= 0 && y >= 0 && x < cols && y < rows) blocked[y * cols + x] = 1;
+      }
+    }
+  }
+  S.nav = { tile, cols, rows, blocked };
+}
+
+const navCell = (p) => {
+  const { tile, cols, rows } = S.nav;
+  return clamp(Math.floor(p.y / tile), 0, rows - 1) * cols + clamp(Math.floor(p.x / tile), 0, cols - 1);
+};
+const cellPos = (i) => ({ x: (i % S.nav.cols + 0.5) * S.nav.tile, y: (Math.floor(i / S.nav.cols) + 0.5) * S.nav.tile });
+
+// A* over the wall grid, then string-pulled so guards cut corners but never clip walls.
+function findRoute(from, to) {
+  const { cols, rows, blocked } = S.nav, start = navCell(from), end = navCell(to);
+  if (blocked[start] || blocked[end] || clearLine(from, to)) return [to];
+  const g = new Map([[start, 0]]), prev = new Map(), open = [start], closed = new Set();
+  const h = (i) => Math.hypot(i % cols - end % cols, Math.floor(i / cols) - Math.floor(end / cols));
+  const f = new Map([[start, h(start)]]);
+  while (open.length) {
+    let bi = 0;
+    for (let k = 1; k < open.length; k++) if (f.get(open[k]) < f.get(open[bi])) bi = k;
+    const cur = open.splice(bi, 1)[0];
+    if (cur === end) break;
+    closed.add(cur);
+    const cx = cur % cols, cy = Math.floor(cur / cols);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = cx + dx, ny = cy + dy;
+        if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const n = ny * cols + nx;
+        if (blocked[n] || closed.has(n)) continue;
+        if (dx && dy && (blocked[cy * cols + nx] || blocked[ny * cols + cx])) continue;
+        const cost = g.get(cur) + (dx && dy ? 1.414 : 1);
+        if (cost < (g.get(n) ?? Infinity)) {
+          g.set(n, cost); prev.set(n, cur); f.set(n, cost + h(n));
+          if (!open.includes(n)) open.push(n);
+        }
+      }
+    }
+  }
+  if (!prev.has(end)) return [to];
+  const cells = [];
+  for (let c = end; c !== start; c = prev.get(c)) cells.unshift(cellPos(c));
+  cells[cells.length - 1] = to;
+  const out = [];
+  let anchor = from;
+  for (let i = 0; i < cells.length; i++) {
+    if (i + 1 < cells.length && clearLine(anchor, cells[i + 1])) continue;
+    out.push(cells[i]); anchor = cells[i];
+  }
+  return out;
+}
+
+// Roaming guards drift to random open floor (preferring hall centres), otherwise to one of their waypoints.
+function pickDest(g) {
+  g.destIdx = -1;
+  if (S.roam && Math.random() < 0.7) {
+    const { cols, rows, blocked, tile } = S.nav, c0 = navCell(g), cx = c0 % cols, cy = Math.floor(c0 / cols);
+    for (let tries = 0; tries < 20; tries++) {
+      const nx = clamp(cx + Math.round(rand(-10, 10)), 1, cols - 2), ny = clamp(cy + Math.round(rand(-7, 7)), 1, rows - 2), n = ny * cols + nx;
+      if (blocked[n] || Math.hypot(nx - cx, ny - cy) < 4) continue;
+      if (tries < 12 && [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => blocked[(ny + dy) * cols + nx + dx]))) continue;
+      return cellPos(n);
+    }
+  }
   const all = g.path.map((_, i) => i).filter((i) => i !== g.cur);
-  const seen = all.filter((i) => clearLine(here, g.path[i]));
-  const fresh = seen.filter((i) => i !== g.last);
-  const pool = fresh.length ? fresh : seen.length ? seen : all;
-  return pool[Math.floor(Math.random() * pool.length)];
+  const fresh = all.filter((i) => i !== g.last);
+  const pool = fresh.length ? fresh : all;
+  g.destIdx = pool[Math.floor(Math.random() * pool.length)];
+  return g.path[g.destIdx];
 }
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
@@ -197,12 +286,16 @@ function patrol(g, dt) {
       if (Math.random() < 0.2 * e) { g.mult = 0; g.multLeft = rand(0.6, 1.2); }
     }
   }
-  if (g.wander && g.target < 0) g.target = pickWaypoint(g);
-  const goal = g.path[g.wander ? g.target : g.next], dx = goal.x - g.x, dy = goal.y - g.y, dist = Math.hypot(dx, dy);
+  if (!g.dest) g.dest = g.wander ? pickDest(g) : g.path[g.next];
+  if (!g.route) g.route = findRoute(g, g.dest);
+  const goal = g.route[0], last = g.route.length === 1, dx = goal.x - g.x, dy = goal.y - g.y, dist = Math.hypot(dx, dy);
   if (dist <= 2) {
-    g.x = goal.x; g.y = goal.y; g.vel = 0;
+    g.x = goal.x; g.y = goal.y;
+    g.route.shift();
+    if (g.route.length) return;
+    g.vel = 0; g.route = null; g.dest = null;
     if (g.wander) {
-      g.last = g.cur; g.cur = g.target; g.target = -1;
+      if (g.destIdx >= 0) { g.last = g.cur; g.cur = g.destIdx; }
     } else {
       if (g.next + g.dir < 0 || g.next + g.dir >= g.path.length) g.dir = -g.dir;
       g.next += g.dir;
@@ -213,7 +306,7 @@ function patrol(g, dt) {
   const desired = Math.atan2(dy, dx);
   turnToward(g, desired, dt);
   const align = Math.max(0, Math.cos(angleDiff(g.ang, desired))) ** 3;
-  const top = Math.min(g.speed * g.mult * align, 15 + dist * 2.5);
+  const top = last ? Math.min(g.speed * g.mult * align, 15 + dist * 2.5) : g.speed * g.mult * align;
   g.vel += clamp(top - g.vel, -C.GUARD_ACCEL * dt, C.GUARD_ACCEL * dt);
   const move = Math.min(g.vel * dt, dist);
   g.x += dx / dist * move; g.y += dy / dist * move;
@@ -233,7 +326,7 @@ function updatePoly(v) {
   const count = Math.max(1, Math.ceil(v.fov / C.RAY_STEP_DEG)), half = rad(v.fov) / 2;
   v.poly = [{ x: 0, y: 0 }];
   for (let i = 0; i <= count; i++) {
-    const a = v.ang + lerp(-half, half, i / count);
+    const a = v.ang + (v.sway || 0) + lerp(-half, half, i / count);
     const ex = v.x + Math.cos(a) * v.range, ey = v.y + Math.sin(a) * v.range;
     const hit = raycast(v.x, v.y, ex, ey) || { x: ex, y: ey };
     v.poly.push({ x: hit.x - v.x, y: hit.y - v.y });
@@ -243,12 +336,29 @@ function updatePoly(v) {
 function canSee(v, p) {
   const dx = p.x - v.x, dy = p.y - v.y;
   if (Math.hypot(dx, dy) > v.range) return false;
-  if (Math.abs(angleDiff(v.ang, Math.atan2(dy, dx))) > rad(v.fov) / 2) return false;
+  if (Math.abs(angleDiff(v.ang + (v.sway || 0), Math.atan2(dy, dx))) > rad(v.fov) / 2) return false;
   return !raycast(v.x, v.y, p.x, p.y);
 }
 
+function listen(g, dt) {
+  g.coolT = Math.max(0, (g.coolT || 0) - dt);
+  const p = S.players.find((q) => !q.dead && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.HEAR_RANGE
+    && Math.abs(angleDiff(g.ang, Math.atan2(q.y - g.y, q.x - g.x))) > rad(110));
+  if (!p || g.pauseLeft > 0 || g.coolT > 0) { g.hearT = 0; return; }
+  g.hearT = (g.hearT || 0) + dt;
+  if (g.hearT < C.HEAR_DELAY) return;
+  g.hearT = 0; g.coolT = 4;
+  startPause(g, 3);
+  g.lookBase = g.ang + Math.PI;
+}
+
 function updateVision(v, dt) {
-  if (v.kind === 'guard') patrol(v, dt); else sweepLight(v, dt);
+  if (v.kind === 'guard') {
+    listen(v, dt);
+    patrol(v, dt);
+    v.swayT = (v.swayT ?? Math.random() * TAU) + (v.seen > 0 ? 0 : dt * 2.4);
+    v.sway = rad(C.GUARD_SWAY_DEG) * Math.sin(v.swayT);
+  } else sweepLight(v, dt);
   const spotted = [];
   if (!v.active) { v.poly = []; v.seen = 0; v.times = []; return spotted; }
   updatePoly(v);
@@ -271,6 +381,9 @@ async function loadLevel(id, coop = false) {
   S.level = id;
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
   S.walls = data.walls.map(rect);
+  buildNav(tile);
+  S.diff = Math.min(1 + 0.035 * Math.max(0, id - 5), 1.75);
+  S.roam = id > 5;
   const trig = (list) => (list ?? []).map((o) => ({ id: o.id, ...rect(o.rect), on: false }));
   const barrier = (list, kind) => (list ?? []).map((o) => ({ id: o.id, kind, ...rect(o.rect), open: false }));
   S.plates = trig(data.plates); S.switches = trig(data.switches);
@@ -364,6 +477,12 @@ function step(dt) {
   });
   const spotted = new Set();
   for (const v of S.visions) updateVision(v, dt).forEach((i) => spotted.add(i));
+  for (const v of S.visions) {
+    if (v.kind !== 'guard') continue;
+    S.players.forEach((p, i) => {
+      if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - v.x, p.y - v.y) < C.PLAYER_R + 10) spotted.add(i);
+    });
+  }
   spotted.forEach(killPlayer);
   if (S.mode === 'playing' && S.players.every((p) => p.dead) && (S.failT -= dt) <= 0) endLevel(false);
 }
@@ -377,6 +496,7 @@ function finishLevel(won) {
   S.mode = won ? 'won' : 'failed';
   S.coopMenu = false;
   audio.setRolling(false);
+  const cleared = (inCoop() ? store.get().coopHighest : store.get().highest) ?? 0;
   if (won) {
     audio.playWin();
     if (!inCoop() && S.level > (store.get().highest ?? 0)) store.set({ highest: S.level });
@@ -385,9 +505,32 @@ function finishLevel(won) {
     audio.playAlert();
   }
   const coop = inCoop();
-  showPopup(won ? 'Level Complete!' : 'Bummer... try again?',
+  const total = coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT;
+  const beatAll = won && S.level === total && (DEV || cleared >= total - 1);
+  if (beatAll) { audio.playCelebrate(); startConfetti(); }
+  showPopup(beatAll ? 'Beat the Game! Well Done' : won ? 'Level Complete!' : 'Bummer... try again?',
     { resume: false, retry: !won && (!coop || net.role === 'host'), next: won && S.level < (coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT) && (!coop || net.role === 'host'),
       pick: coop && net.role === 'host' });
+}
+
+function startConfetti() {
+  const cv = $('confetti'), c = cv.getContext('2d');
+  cv.width = window.innerWidth; cv.height = window.innerHeight; cv.hidden = false;
+  const cols = ['#ff5a5f', '#ffd23f', '#3bceac', '#4ea8de', '#b983ff', '#ff9f1c'];
+  const bits = Array.from({ length: 160 }, () => ({ x: Math.random() * cv.width, y: -Math.random() * cv.height * 0.8,
+    vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3, w: 6 + Math.random() * 6, h: 4 + Math.random() * 5,
+    a: Math.random() * TAU, va: (Math.random() - 0.5) * 0.3, c: cols[(Math.random() * cols.length) | 0] }));
+  const tick = () => {
+    if ($('popup').hidden) { cv.hidden = true; return; }
+    c.clearRect(0, 0, cv.width, cv.height);
+    for (const b of bits) {
+      b.x += b.vx; b.y += b.vy; b.a += b.va;
+      if (b.y > cv.height + 20) { b.y = -20; b.x = Math.random() * cv.width; }
+      c.save(); c.translate(b.x, b.y); c.rotate(b.a); c.fillStyle = b.c; c.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); c.restore();
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 // ---------- rendering ----------
@@ -495,6 +638,7 @@ function drawWorld() {
   }
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
+    drawTrail(p);
     ctx.globalAlpha = p.alpha;
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
@@ -525,6 +669,20 @@ function drawWorld() {
     ctx.fillStyle = '#e8eefa'; ctx.fillText(S.hint, w / 2, h - 64);
   }
   drawJoystick();
+}
+
+function drawTrail(p) {
+  const now = performance.now(), t = p.trail || (p.trail = []), last = t[t.length - 1];
+  if (last && Math.hypot(p.x - last.x, p.y - last.y) > 40) t.length = 0;
+  if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) t.push({ x: p.x, y: p.y, t: now });
+  while (t.length && now - t[0].t > 350) t.shift();
+  ctx.fillStyle = p.color;
+  for (const q of t) {
+    const f = 1 - (now - q.t) / 350;
+    ctx.globalAlpha = p.alpha * f * 0.4;
+    ctx.beginPath(); ctx.arc(q.x, q.y, C.PLAYER_R * (0.4 + 0.5 * f), 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawJoystick() {
@@ -561,7 +719,7 @@ function buildSelect() {
   for (let id = 1; id <= C.LEVEL_COUNT; id++) {
     const b = document.createElement('button');
     b.className = 'btn level' + (id <= highest ? ' done' : '');
-    if (id <= highest + 1) {
+    if (DEV || id <= highest + 1) {
       b.textContent = `${id}\n${S.names[id] ?? ''}`;
       b.onclick = () => startLevel(id);
     } else {
