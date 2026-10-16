@@ -9,6 +9,7 @@ var fov_deg: float = Config.GUARD_FOV
 var view_range: float = Config.GUARD_RANGE
 var facing: Vector2 = Vector2.RIGHT
 var active: bool = true
+var bubble_y: float = -42.0
 var cone_color: Color = Config.VISION_COLOR
 
 var _seen_time: float = 0.0
@@ -84,4 +85,4 @@ func _draw() -> void:
 			draw_colored_polygon(PackedVector2Array([Vector2.ZERO, a, b]), color)
 	_draw_body()
 	if _seen_time > 0.0:
-		draw_texture(ALERT_BUBBLE, Vector2(-11.0, -42.0))
+		draw_texture(ALERT_BUBBLE, Vector2(-11.0, bubble_y))

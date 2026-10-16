@@ -8,6 +8,13 @@ var pause_time: float = Config.GUARD_PAUSE
 var _next: int = 1
 var _step_dir: int = 1
 var _pause_left: float = 0.0
+var _sprite: AnimatedSprite2D
+
+
+func _ready() -> void:
+	bubble_y = -72.0
+	_sprite = CharacterSprites.create("guard")
+	add_child(_sprite)
 
 
 func setup(data: Dictionary, tile: float) -> void:
@@ -23,11 +30,20 @@ func setup(data: Dictionary, tile: float) -> void:
 
 
 func _update_state(delta: float) -> void:
+	var moving: bool = _patrol(delta)
+	if moving:
+		_sprite.play(CharacterSprites.direction_name(facing))
+	else:
+		_sprite.stop()
+		_sprite.frame = 0
+
+
+func _patrol(delta: float) -> bool:
 	if path.size() < 2:
-		return
+		return false
 	if _pause_left > 0.0:
 		_pause_left -= delta
-		return
+		return false
 	var to_goal: Vector2 = path[_next] - position
 	var step: float = speed * delta
 	if to_goal.length() <= step:
@@ -36,10 +52,7 @@ func _update_state(delta: float) -> void:
 			_step_dir = -_step_dir
 		_next += _step_dir
 		_pause_left = pause_time
-	else:
-		facing = to_goal.normalized()
-		position += facing * step
-
-
-func _draw_body() -> void:
-	draw_circle(Vector2.ZERO, Config.GUARD_RADIUS, Config.GUARD_COLOR)
+		return false
+	facing = to_goal.normalized()
+	position += facing * step
+	return true

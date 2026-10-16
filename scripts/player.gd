@@ -6,7 +6,11 @@ const RIGHT_KEYS: Array[Key] = [KEY_D, KEY_RIGHT]
 const UP_KEYS: Array[Key] = [KEY_W, KEY_UP]
 const DOWN_KEYS: Array[Key] = [KEY_S, KEY_DOWN]
 
+@export var character: String = "boy1"
+
 var joystick_vector: Vector2 = Vector2.ZERO
+
+var _sprite: AnimatedSprite2D
 
 @onready var _shape: CollisionShape2D = $CollisionShape2D
 
@@ -16,6 +20,8 @@ func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	collision_layer = 1
 	collision_mask = Config.WALL_LAYER
+	_sprite = CharacterSprites.create(character)
+	add_child(_sprite)
 	(_shape.shape as CircleShape2D).radius = Config.PLAYER_RADIUS
 
 
@@ -25,6 +31,11 @@ func _physics_process(_delta: float) -> void:
 		direction = joystick_vector
 	velocity = direction * Config.PLAYER_SPEED
 	move_and_slide()
+	if velocity == Vector2.ZERO:
+		_sprite.stop()
+		_sprite.frame = 0
+	else:
+		_sprite.play(CharacterSprites.direction_name(velocity))
 
 
 func set_joystick_vector(vector: Vector2) -> void:
@@ -42,7 +53,3 @@ func _is_down(keys: Array[Key]) -> bool:
 		if Input.is_physical_key_pressed(key):
 			return true
 	return false
-
-
-func _draw() -> void:
-	draw_circle(Vector2.ZERO, Config.PLAYER_RADIUS, Config.PLAYER_COLOR)

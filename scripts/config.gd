@@ -7,7 +7,7 @@ const JOYSTICK_RADIUS: float = 44.0
 const JOYSTICK_DEADZONE: float = 0.15
 
 const BACKGROUND_COLOR: Color = Color(0.04, 0.05, 0.08)
-const WALL_COLOR: Color = Color(0.12, 0.25, 0.34)
+const WALL_OUTLINE_COLOR: Color = Color(0.02, 0.03, 0.06, 0.7)
 const GOAL_COLOR: Color = Color(0.43, 1.0, 0.67, 0.2)
 const PLAYER_COLOR: Color = Color(0.85, 0.9, 1.0)
 
