@@ -882,6 +882,28 @@ $('join').onclick = joinGame;
 $('backbtn').onclick = showMenu;
 $('pick').onclick = () => showCoopPicker();
 
+// ---------- main menu guard ----------
+const menuCanvas = $('menuguard'), mctx = menuCanvas.getContext('2d');
+function drawMenuGuard(now) {
+  const t = now / 1000, W = menuCanvas.width, H = menuCanvas.height;
+  mctx.clearRect(0, 0, W, H);
+  const gx = W / 2 + Math.sin(t * 0.55) * W * 0.3, gy = H * 0.2;
+  const dir = Math.PI / 2 + Math.sin(t * 1.4) * rad(50), half = rad(32), range = H * 0.75;
+  mctx.save();
+  mctx.translate(gx, gy);
+  const grad = mctx.createRadialGradient(0, 0, 0, 0, 0, range);
+  grad.addColorStop(0, 'rgba(217,230,255,0.45)'); grad.addColorStop(1, 'rgba(217,230,255,0)');
+  mctx.fillStyle = grad;
+  mctx.beginPath(); mctx.moveTo(0, 0); mctx.arc(0, 0, range, dir - half, dir + half); mctx.closePath(); mctx.fill();
+  mctx.fillStyle = C.GUARD; mctx.beginPath();
+  for (let i = 0; i < 16; i++) {
+    const r = i % 2 === 0 ? 30 : 10, a = dir + Math.PI * i / 8;
+    mctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  mctx.closePath(); mctx.fill();
+  mctx.restore();
+}
+
 // ---------- main loop ----------
 let last = 0, acc = 0;
 function frame(now) {
@@ -896,6 +918,7 @@ function frame(now) {
   } else {
     acc = 0;
   }
+  if (S.mode === 'menu') drawMenuGuard(now);
   if (S.goal && ['playing', 'paused', 'won', 'failed'].includes(S.mode)) drawWorld();
 }
 
