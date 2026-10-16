@@ -1,6 +1,31 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/level.gd" id="2_level"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
+[ext_resource type="PackedScene" path="res://scenes/joystick.tscn" id="4_joystick"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
+
+[node name="Level" type="Node2D" parent="."]
+script = ExtResource("2_level")
+
+[node name="Player" parent="." instance=ExtResource("3_player")]
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Joystick" parent="UI" instance=ExtResource("4_joystick")]
+
+[node name="Message" type="Label" parent="UI"]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -100.0
+offset_top = 20.0
+offset_right = 100.0
+offset_bottom = 46.0
+grow_horizontal = 2
+text = "Goal reached!"
+horizontal_alignment = 1
