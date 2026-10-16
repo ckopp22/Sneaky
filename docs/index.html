@@ -57,16 +57,18 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 #music { width: 100px; }
 
 #coop { width: 200px; }
-#lobby { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 16px; padding: 70px 16px 16px; overflow-y: auto; }
+#lobby { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+  gap: 16px; padding: 70px 16px 32px; overflow-y: auto; touch-action: pan-y; }
 #lobby img { width: 328px; max-width: 90%; image-rendering: pixelated; }
 #lobby h1 { font-size: 24px; font-weight: 400; margin: 0; }
 #code { font-size: 36px; letter-spacing: 8px; min-height: 44px; color: #6effab; }
 #codeinput { width: 200px; height: 44px; font: 24px system-ui; text-align: center; letter-spacing: 6px; text-transform: uppercase;
   color: var(--text); background: #0a0d14; border: 2px solid var(--dim); border-radius: 6px; -webkit-user-select: text; user-select: text; }
 #lobbystatus { margin: 0; max-width: 240px; text-align: center; color: var(--dim); min-height: 40px; }
-#select {: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 24px; padding: 70px 16px 16px; overflow-y: auto; touch-action: pan-y; }
+#select { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+  gap: 24px; padding: 70px 16px 32px; overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+#select > :first-child, #lobby > :first-child { margin-top: auto; }
+#select > :last-child, #lobby > :last-child { margin-bottom: auto; }
 #select img { width: 328px; max-width: 90%; image-rendering: pixelated; }
 #select h1 { font-size: 24px; font-weight: 400; margin: 0; }
 #grid { display: grid; grid-template-columns: repeat(5, 150px); gap: 16px; }
