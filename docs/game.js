@@ -533,13 +533,26 @@ function buildSelect() {
   }
 }
 
+const SCREENS = ['mainmenu', 'select', 'lobby', 'coopsel', 'popup', 'pause', 'game', 'settings', 'settingsbtn'];
+function hideAll() { for (const id of SCREENS) show($(id), false); }
+
+function showMenu() {
+  netClose();
+  S.mode = 'menu';
+  S.coopMenu = false;
+  audio.duck(false);
+  audio.setRolling(false);
+  hideAll();
+  show($('mainmenu'), true); show($('settingsbtn'), true);
+}
+
 function showSelect() {
   netClose();
   S.mode = 'select';
   S.coopMenu = false;
   audio.duck(false);
   audio.setRolling(false);
-  show($('popup'), false); show($('pause'), false); show($('game'), false); show($('lobby'), false); show($('coopsel'), false);
+  hideAll();
   buildSelect();
   show($('select'), true);
 }
@@ -548,7 +561,7 @@ async function startLevel(id) {
   netClose();
   await loadLevel(id);
   S.me = 0;
-  show($('select'), false); show($('popup'), false); show($('game'), true); show($('pause'), true);
+  hideAll(); show($('game'), true); show($('pause'), true);
   S.mode = 'playing';
 }
 
@@ -574,6 +587,7 @@ const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown
 window.addEventListener('keydown', (e) => {
   audio.start();
   if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Escape' && !$('settings').hidden) { closeSettings(); return; }
   if (e.code === 'Escape') { if (S.mode === 'playing' && !S.coopMenu) pauseGame(); else resumeGame(); return; }
   if (GAME_KEYS.has(e.code)) { S.keys.add(e.code); e.preventDefault(); }
 });
@@ -613,7 +627,17 @@ $('pause').onclick = pauseGame;
 $('resume').onclick = resumeGame;
 $('retry').onclick = () => (inCoop() ? startCoop(S.level) : startLevel(S.level));
 $('next').onclick = () => (inCoop() ? startCoop(S.level + 1) : startLevel(S.level + 1));
-$('menu').onclick = showSelect;
+$('menu').onclick = () => (inCoop() || net.role ? showMenu() : showSelect());
+$('solo').onclick = showSelect;
+$('selback').onclick = showMenu;
+$('settingsbtn').onclick = () => { show($('settings'), true); };
+const closeSettings = () => { show($('settings'), false); $('reset').textContent = 'Reset Progress'; };
+$('sclose').onclick = closeSettings;
+$('reset').onclick = () => {
+  if ($('reset').textContent === 'Reset Progress') { $('reset').textContent = 'Tap again to confirm'; return; }
+  store.set({ highest: 0, coopHighest: 0 });
+  closeSettings();
+};
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 
@@ -639,7 +663,7 @@ function wire(conn) {
 function showLobby() {
   netClose();
   S.mode = 'lobby';
-  show($('select'), false); show($('coopsel'), false);
+  hideAll();
   $('code').textContent = '';
   lobbyStatus('Host a game, or enter a friend’s code to join.');
   show($('lobby'), true);
@@ -693,7 +717,7 @@ async function guestStart(level) {
 }
 
 function enterGame() {
-  show($('select'), false); show($('lobby'), false); show($('coopsel'), false); show($('popup'), false); show($('game'), true); show($('pause'), true);
+  hideAll(); show($('game'), true); show($('pause'), true);
   S.mode = 'playing';
 }
 
@@ -702,7 +726,7 @@ function showCoopPicker(highest) {
   if (host) { highest = store.get().coopHighest ?? 0; netSend({ t: 'picker', highest }); }
   S.mode = 'picker'; S.coopMenu = false;
   audio.setRolling(false); audio.duck(false);
-  for (const id of ['select', 'lobby', 'popup', 'pause', 'game']) show($(id), false);
+  hideAll();
   $('cstatus').textContent = host ? 'Choose a Level' : 'Host is choosing a level...';
   const grid = $('cgrid');
   grid.className = host ? '' : 'watch';
@@ -810,8 +834,8 @@ function netTick(dt) {
 $('coop').onclick = showLobby;
 $('host').onclick = hostGame;
 $('join').onclick = joinGame;
-$('lobbyback').onclick = showSelect;
-$('cleave').onclick = showSelect;
+$('lobbyback').onclick = showMenu;
+$('cleave').onclick = showMenu;
 $('pick').onclick = () => showCoopPicker();
 
 // ---------- main loop ----------
@@ -838,7 +862,7 @@ async function boot() {
   S.names = [''];
   await Promise.all(Array.from({ length: C.LEVEL_COUNT }, (_, i) =>
     fetch(`assets/levels/level${i + 1}.json`).then((r) => r.json()).then((d) => { S.names[i + 1] = d.name; }).catch(() => {})));
-  showSelect();
+  showMenu();
   requestAnimationFrame(frame);
 }
 boot();

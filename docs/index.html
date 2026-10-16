@@ -56,7 +56,12 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 #toggles { display: flex; gap: 8px; }
 #music { width: 100px; }
 
-#coop, #cleave { width: 200px; }
+#coop, #cleave, #solo, #selback { width: 200px; }
+#mainmenu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 56px 16px 16px; gap: 0; }
+#mainmenu img { width: 420px; max-width: 90%; image-rendering: pixelated; }
+.menubtns { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+.menubtns .btn { width: 220px; }
+.overlay h2 { font-size: 28px; margin: 0 0 4px; font-weight: 400; text-align: center; }
 #cgrid.watch { pointer-events: none; }
 #lobby { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
   gap: 16px; padding: 70px 16px 32px; overflow-y: auto; touch-action: pan-y; }
@@ -76,7 +81,7 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 @media (max-width: 860px) { #grid, #cgrid { grid-template-columns: repeat(2, 150px); } }
 @media (min-width: 861px) and (max-width: 1000px) { #grid, #cgrid { grid-template-columns: repeat(4, 150px); } }
 
-#popup { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center;
+#popup, #settings { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center;
   justify-content: center; z-index: 10; }
 #ptitle { font-size: 28px; margin: 0 0 4px; font-weight: 400; text-align: center; }
 </style>
@@ -84,11 +89,19 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 <body>
 <canvas id="game"></canvas>
 
+<div id="mainmenu" hidden>
+  <img src="assets/ui/graphics/logo_sneaky.png" alt="Sneaky">
+  <div class="menubtns">
+    <button class="btn primary" id="solo">Solo</button>
+    <button class="btn success" id="coop">Co-op</button>
+  </div>
+</div>
+
 <div id="select" hidden>
   <img src="assets/ui/graphics/logo_sneaky.png" alt="Sneaky">
   <h1>Select Level</h1>
   <div id="grid"></div>
-  <button class="btn success" id="coop">Co-op</button>
+  <button class="btn secondary" id="selback">Back</button>
 </div>
 
 <div id="coopsel" class="screen" hidden>
@@ -116,10 +129,19 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
     <button class="btn square" id="sfx"><img alt="Sound" src="assets/ui/icons/icon_sound_on.png"></button>
     <button class="btn secondary" id="music">Music</button>
   </div>
+  <button class="btn square" id="settingsbtn" hidden><img alt="Settings" src="assets/ui/icons/icon_settings.png"></button>
   <button class="btn square" id="pause" hidden><img alt="Pause" src="assets/ui/icons/icon_pause.png"></button>
 </div>
 
-<div id="popup" hidden>
+<div id="settings" class="overlay" hidden>
+  <div class="panel">
+    <h2>Settings</h2>
+    <button class="btn secondary" id="reset">Reset Progress</button>
+    <button class="btn primary" id="sclose">Close</button>
+  </div>
+</div>
+
+<div id="popup" class="overlay" hidden>
   <div class="panel">
     <h2 id="ptitle"></h2>
     <button class="btn success" id="resume">Resume</button>
