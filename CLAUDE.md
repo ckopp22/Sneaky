@@ -4,17 +4,17 @@ Keep token usage low. Be efficient in what you read, what you write, and what yo
 
 ## Project
 - **Name:** sneaky
-- **Type:** web game (Godot 4.x)
-- **Stack:** Godot 4.x, GDScript only. Target: web (HTML5 export, Compatibility renderer).
-- **Design doc:** `GDD.md` (Technical Plan section 9 describes JS; this project uses Godot instead)
-- **Key constraints:** Typed GDScript and signals. Keep scenes small. Structure: `scenes/`, `scripts/`, `assets/`.
-- **Check scripts with:** `godot --headless --check-only --path .`
+- **Type:** web game (plain HTML5 Canvas)
+- **Stack:** vanilla JavaScript, no build step, no dependencies. Served from `docs/` via GitHub Pages.
+- **Design doc:** `GDD.md`
+- **Key constraints:** Keep it simple. Files: `docs/index.html` (UI + CSS), `docs/game.js` (game), `docs/assets/` (levels, audio, UI art).
+- **Check script with:** `node --check docs/game.js`
 
 ## Reading files
 - Read the design doc in full **once per session**. After that, read only the section you need (Grep for the heading, then read that range).
 - Read only the files the task touches. Do not scan the whole repo "to get oriented".
 - Use Grep or Glob to locate things before opening a file. Read line ranges, not whole files, when a file is over about 150 lines.
-- Never open large data, asset, lock, build-output, or generated files (`.godot/`, `*.import`, exported builds, big JSON or content banks) unless the task is specifically about them. Grep for a single entry instead.
+- Never open large data, asset, lock, build-output, or generated files (exported builds, big JSON or content banks) unless the task is specifically about them. Grep for a single entry instead.
 - Do not re-read a file you just edited or wrote.
 
 ## Writing code
