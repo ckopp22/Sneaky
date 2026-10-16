@@ -382,7 +382,7 @@ async function loadLevel(id, coop = false) {
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
   S.walls = data.walls.map(rect);
   buildNav(tile);
-  S.diff = Math.min(1 + 0.035 * Math.max(0, id - 5), 1.75);
+  S.diff = data.diff ?? Math.min(1 + 0.035 * Math.max(0, id - 5), 1.75);
   S.roam = id > 5;
   const trig = (list) => (list ?? []).map((o) => ({ id: o.id, ...rect(o.rect), on: false }));
   const barrier = (list, kind) => (list ?? []).map((o) => ({ id: o.id, kind, ...rect(o.rect), open: false }));

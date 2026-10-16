@@ -8,7 +8,7 @@ function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; l
 
 function build(n) {
   const R = rng(n * 7919), k = n - from, pick = (a) => a[Math.floor(R() * a.length)];
-  const cw = 8 + Math.round(k * 0.9), ch = 5 + Math.round(k * 0.35), W = cw * 3 + 1, H = ch * 3 + 1;
+  const P = 5, cw = 7 + Math.round(k * 0.8), ch = 5 + Math.round(k * 0.35), W = cw * P + 1, H = ch * P + 1;
   const open = new Set(), key = (x, y) => y * cw + x, edge = (a, b) => Math.min(a, b) + '-' + Math.max(a, b);
   // recursive backtracker = perfect maze (many dead ends), then punch a few loops
   const r0 = [Math.floor(R() * cw), Math.floor(R() * ch)], seen = new Set([key(...r0)]), stack = [r0];
@@ -24,13 +24,13 @@ function build(n) {
   const [sx, sy] = pick(edges), dist = new Map([[key(sx, sy), 0]]), q = [[sx, sy]];
   while (q.length) { const [x, y] = q.shift(); for (const [a, b] of nb(x, y)) if (open.has(edge(key(x, y), key(a, b))) && !dist.has(key(a, b))) { dist.set(key(a, b), dist.get(key(x, y)) + 1); q.push([a, b]); } }
   let gk = key(sx, sy); for (const [c, d] of dist) if (d > dist.get(gk)) gk = c;
-  const gx = gk % cw, gy = Math.floor(gk / cw), cell = (x, y) => [x * 3 + 1, y * 3 + 1];
+  const gx = gk % cw, gy = Math.floor(gk / cw), cell = (x, y) => [x * P + 2, y * P + 2];
   // tile grid -> merged wall rects
   const wall = Array.from({ length: H }, () => Array(W).fill(true));
   for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
-    for (const dy of [1, 2]) for (const dx of [1, 2]) wall[y * 3 + dy][x * 3 + dx] = false;
-    if (x + 1 < cw && open.has(edge(key(x, y), key(x + 1, y)))) for (const dy of [1, 2]) wall[y * 3 + dy][x * 3 + 3] = false;
-    if (y + 1 < ch && open.has(edge(key(x, y), key(x, y + 1)))) for (const dx of [1, 2]) wall[y * 3 + 3][x * 3 + dx] = false;
+    for (const dy of [1, 2, 3, 4]) for (const dx of [1, 2, 3, 4]) wall[y * P + dy][x * P + dx] = false;
+    if (x + 1 < cw && open.has(edge(key(x, y), key(x + 1, y)))) for (const dy of [1, 2, 3, 4]) wall[y * P + dy][x * P + P] = false;
+    if (y + 1 < ch && open.has(edge(key(x, y), key(x, y + 1)))) for (const dx of [1, 2, 3, 4]) wall[y * P + P][x * P + dx] = false;
   }
   const walls = [], active = new Map();
   for (let y = 0; y <= H; y++) {
@@ -41,12 +41,12 @@ function build(n) {
   }
   // guards / lights away from the start
   const far = [...dist].filter(([, d]) => d > 5).map(([c]) => [c % cw, Math.floor(c / cw)]);
-  const guards = Array.from({ length: 2 + Math.floor(k / 2) }, () => ({
+  const guards = Array.from({ length: 2 + Math.floor(k / 3) }, () => ({
     wander: Array.from({ length: 4 }, () => cell(...pick(far))), speed: Math.round(50 + k * 1.5), pause: 1, erratic: 0.3 }));
   const lights = [];
   for (let i = 0; i < 1 + Math.floor(k / 3); i++) lights.push({ type: 'blink', pos: cell(...pick(far)), radius: 90, period: 3, on: 1.4, offset: Math.round(R() * 3 * 10) / 10 });
   if (k >= 3) for (let i = 0; i < 1 + Math.floor(k / 4); i++) lights.push({ type: 'sweep', pos: cell(...pick(far)), arc: pick([[0, 180], [90, 270], [180, 360], [270, 450]]), period: 5, fov: 40, range: 130 });
-  const lvl = { id: n, name: NAMES[k % NAMES.length], size: [W, H], tileSize: 32, playerStart: cell(sx, sy), goal: { rect: [...cell(gx, gy), 2, 2] }, walls, guards, lights };
+  const lvl = { id: n, diff: Math.round((1.15 + k * 0.02) * 100) / 100, name: NAMES[k % NAMES.length], size: [W, H], tileSize: 32, playerStart: cell(sx, sy), goal: { rect: [...cell(gx, gy), 2, 2] }, walls, guards, lights };
   if (n === from) lvl.hint = 'Find the way out. Some paths are dead ends.';
   return lvl;
 }
