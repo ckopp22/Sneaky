@@ -3,6 +3,11 @@ extends Control
 
 signal moved(vector: Vector2)
 
+const ART_SCALE: float = 2.0
+const BASE_TEXTURE: Texture2D = preload("res://assets/ui/joystick/joystick_base.png")
+const KNOB_TEXTURE: Texture2D = preload("res://assets/ui/joystick/joystick_knob.png")
+const KNOB_ACTIVE_TEXTURE: Texture2D = preload("res://assets/ui/joystick/joystick_knob_active.png")
+
 var _touch_index: int = -1
 var _knob_offset: Vector2 = Vector2.ZERO
 
@@ -41,6 +46,10 @@ func _release() -> void:
 
 func _draw() -> void:
 	var center: Vector2 = size / 2.0
-	draw_circle(center, Config.JOYSTICK_RADIUS, Color(1, 1, 1, 0.1))
-	draw_arc(center, Config.JOYSTICK_RADIUS, 0.0, TAU, 48, Color(1, 1, 1, 0.3), 2.0)
-	draw_circle(center + _knob_offset, 28.0, Color(1, 1, 1, 0.35))
+	_draw_centered(BASE_TEXTURE, center)
+	_draw_centered(KNOB_ACTIVE_TEXTURE if _touch_index != -1 else KNOB_TEXTURE, center + _knob_offset)
+
+
+func _draw_centered(texture: Texture2D, at: Vector2) -> void:
+	var texture_size: Vector2 = texture.get_size() * ART_SCALE
+	draw_texture_rect(texture, Rect2(at - texture_size / 2.0, texture_size), false)

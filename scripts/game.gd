@@ -9,6 +9,7 @@ var current_level: int = 1
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Config.BACKGROUND_COLOR)
+	get_window().theme = UiTheme.build()
 
 
 func level_path(id: int) -> String:

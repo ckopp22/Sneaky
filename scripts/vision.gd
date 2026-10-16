@@ -3,6 +3,8 @@ extends Node2D
 
 signal spotted
 
+const ALERT_BUBBLE: Texture2D = preload("res://assets/ui/graphics/alert_bubble.png")
+
 var fov_deg: float = Config.GUARD_FOV
 var view_range: float = Config.GUARD_RANGE
 var facing: Vector2 = Vector2.RIGHT
@@ -82,4 +84,4 @@ func _draw() -> void:
 			draw_colored_polygon(PackedVector2Array([Vector2.ZERO, a, b]), color)
 	_draw_body()
 	if _seen_time > 0.0:
-		draw_string(ThemeDB.fallback_font, Vector2(-4.0, -16.0), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.RED)
+		draw_texture(ALERT_BUBBLE, Vector2(-11.0, -42.0))

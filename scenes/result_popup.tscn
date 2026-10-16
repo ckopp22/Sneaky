@@ -30,28 +30,40 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Box" type="VBoxContainer" parent="Center"]
+[node name="Panel" type="PanelContainer" parent="Center"]
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 28
+
+[node name="Box" type="VBoxContainer" parent="Center/Panel/Margin"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Title" type="Label" parent="Center/Box"]
+[node name="Title" type="Label" parent="Center/Panel/Margin/Box"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 28
 text = "Bummer... try again?"
 horizontal_alignment = 1
 
-[node name="Retry" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(160, 48)
+[node name="Retry" type="Button" parent="Center/Panel/Margin/Box"]
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
 text = "Try Again"
 
-[node name="Next" type="Button" parent="Center/Box"]
+[node name="Next" type="Button" parent="Center/Panel/Margin/Box"]
 visible = false
-custom_minimum_size = Vector2(160, 48)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
+theme_type_variation = &"SuccessButton"
 text = "Next Level"
 
-[node name="Menu" type="Button" parent="Center/Box"]
-custom_minimum_size = Vector2(160, 48)
+[node name="Menu" type="Button" parent="Center/Panel/Margin/Box"]
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
+theme_type_variation = &"SecondaryButton"
 text = "Levels"

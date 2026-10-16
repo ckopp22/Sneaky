@@ -4,6 +4,7 @@ extends Node2D
 signal goal_reached
 signal player_spotted
 
+const GOAL_GLOW: Texture2D = preload("res://assets/ui/graphics/goal_glow.png")
 const GUARD_SCENE: PackedScene = preload("res://scenes/guard.tscn")
 const LIGHT_SCENE: PackedScene = preload("res://scenes/light.tscn")
 
@@ -12,6 +13,10 @@ var player_start: Vector2 = Vector2.ZERO
 
 var _walls: Array[Rect2] = []
 var _goal: Rect2 = Rect2()
+
+
+func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 
 func load_json(path: String) -> bool:
@@ -86,4 +91,5 @@ func _on_goal_body_entered(body: Node2D) -> void:
 func _draw() -> void:
 	for wall: Rect2 in _walls:
 		draw_rect(wall, Config.WALL_COLOR)
+	draw_texture_rect(GOAL_GLOW, _goal.grow(32.0), false)
 	draw_rect(_goal, Config.GOAL_COLOR)

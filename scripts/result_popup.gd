@@ -5,10 +5,10 @@ signal retry_pressed
 signal next_pressed
 signal menu_pressed
 
-@onready var _title: Label = $Center/Box/Title
-@onready var _retry: Button = $Center/Box/Retry
-@onready var _next: Button = $Center/Box/Next
-@onready var _menu: Button = $Center/Box/Menu
+@onready var _title: Label = $Center/Panel/Margin/Box/Title
+@onready var _retry: Button = $Center/Panel/Margin/Box/Retry
+@onready var _next: Button = $Center/Panel/Margin/Box/Next
+@onready var _menu: Button = $Center/Panel/Margin/Box/Menu
 
 
 func _ready() -> void:

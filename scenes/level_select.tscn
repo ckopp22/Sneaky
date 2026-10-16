@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/level_select.gd" id="1_select"]
+[ext_resource type="Texture2D" path="res://assets/ui/graphics/logo_sneaky.png" id="2_logo"]
 
 [node name="LevelSelect" type="Control"]
 layout_mode = 3
@@ -23,9 +24,16 @@ grow_vertical = 2
 layout_mode = 2
 theme_override_constants/separation = 24
 
+[node name="Logo" type="TextureRect" parent="Center/Box"]
+custom_minimum_size = Vector2(328, 112)
+layout_mode = 2
+texture = ExtResource("2_logo")
+expand_mode = 1
+stretch_mode = 5
+
 [node name="Title" type="Label" parent="Center/Box"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 24
 text = "Select Level"
 horizontal_alignment = 1
 
