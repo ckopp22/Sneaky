@@ -283,7 +283,7 @@ function killPlayer(i) {
   if (S.players.length === 1) { endLevel(false); return; }
   const p = S.players[i];
   if (p.dead) return;
-  p.dead = true; p.respawnT = 3;
+  p.dead = true;
   audio.playAlert();
 }
 
@@ -301,10 +301,9 @@ function step(dt) {
     S.cpActive = true;
     S.players.forEach((p, i) => { if (p.dead) revive(p, i); });
   }
-  S.players.forEach((p, i) => {
+  S.players.forEach((p) => {
     p.alpha = Math.min(1, Math.max(0, p.alpha + (p.dead ? -dt / 1.5 : dt / 0.6)));
     p.invuln = Math.max(0, p.invuln - dt);
-    if (p.dead && S.cpActive && (p.respawnT -= dt) <= 0) revive(p, i);
   });
   const spotted = new Set();
   for (const v of S.visions) updateVision(v, dt).forEach((i) => spotted.add(i));
@@ -423,7 +422,7 @@ function drawWorld() {
   ctx.drawImage(IMG.vignette, 0, 0, w, h);
   if (me().dead && S.mode === 'playing') {
     ctx.fillStyle = 'rgba(232,238,250,0.9)'; ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(S.cpActive ? 'Respawning...' : 'You were spotted. Get your partner to the checkpoint!', w / 2, h - 24);
+    ctx.fillText(S.cpActive ? 'You were spotted. It\u2019s up to your partner to finish the level.' : 'You were spotted. Get your partner to the checkpoint!', w / 2, h - 24);
   }
   drawJoystick();
 }
