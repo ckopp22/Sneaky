@@ -457,6 +457,7 @@ function resumeGame() {
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', (e) => {
   audio.start();
+  if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Escape') { if (S.mode === 'playing' && !S.coopMenu) pauseGame(); else resumeGame(); return; }
   if (GAME_KEYS.has(e.code)) { S.keys.add(e.code); e.preventDefault(); }
 });
