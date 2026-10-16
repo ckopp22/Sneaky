@@ -1,10 +1,10 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 35, COOP_LEVEL_COUNT: 25, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 40, COOP_LEVEL_COUNT: 30, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
-    'The Great Maze', 'Grand Labyrinth'], STEP: 1 / 60,
+    'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
@@ -189,7 +189,7 @@ function clearLine(a, b) {
   return [-8, 0, 8].every((o) => !raycast(a.x + nx * o, a.y + ny * o, b.x + nx * o, b.y + ny * o));
 }
 
-function buildNav(tile) {
+function buildNav(tile, seed) {
   const cols = Math.ceil(S.map.w / tile), rows = Math.ceil(S.map.h / tile), blocked = new Uint8Array(cols * rows);
   for (const r of S.walls) {
     for (let y = Math.floor(r.y / tile); y < Math.ceil((r.y + r.h) / tile); y++) {
@@ -198,6 +198,16 @@ function buildNav(tile) {
       }
     }
   }
+  // anything walled off from the start (the void outside an odd-shaped map, sealed pockets) is off limits to guards
+  const reach = new Uint8Array(cols * rows), sx = clamp(seed.x, 0, cols - 1), sy = clamp(seed.y, 0, rows - 1), stack = [sy * cols + sx];
+  if (!blocked[stack[0]]) reach[stack[0]] = 1; else stack.length = 0;
+  while (stack.length) {
+    const c = stack.pop(), x = c % cols, y = (c - x) / cols;
+    for (const n of [x > 0 && c - 1, x < cols - 1 && c + 1, y > 0 && c - cols, y < rows - 1 && c + cols]) {
+      if (n !== false && !blocked[n] && !reach[n]) { reach[n] = 1; stack.push(n); }
+    }
+  }
+  if (reach.includes(1)) for (let i = 0; i < blocked.length; i++) if (!reach[i]) blocked[i] = 1;
   S.nav = { tile, cols, rows, blocked };
 }
 
@@ -394,7 +404,6 @@ async function loadLevel(id, coop = false) {
   S.level = id;
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
   S.walls = data.walls.map(rect);
-  buildNav(tile);
   S.diff = data.diff ?? Math.min(1 + 0.035 * Math.max(0, id - 5), 1.75);
   S.roam = id > 5;
   S.maze = !!data.maze;
@@ -405,6 +414,8 @@ async function loadLevel(id, coop = false) {
   updateSolids();
   S.goal = rect(data.goal.rect);
   const ps = data.playerStart ?? data.playerStarts[0];
+  buildNav(tile, { x: ps[0], y: ps[1] });
+  S.hideGoal = !!data.hideGoal;
   const sx = (ps[0] + 0.5) * tile, sy = (ps[1] + 0.5) * tile;
   const at = (a) => ({ x: (a[0] + 0.5) * tile, y: (a[1] + 0.5) * tile });
   S.players = coop
@@ -636,8 +647,17 @@ function drawWorld() {
   ctx.fillStyle = C.WALL;
   for (const r of S.walls) ctx.fillRect(r.x, r.y, r.w, r.h);
   const g = S.goal;
-  ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
-  ctx.fillStyle = C.GOAL; ctx.fillRect(g.x, g.y, g.w, g.h);
+  let ga = 1;
+  if (S.hideGoal) {
+    const d = Math.min(...S.players.filter((p) => !p.dead).map((p) => Math.hypot(p.x - (g.x + g.w / 2), p.y - (g.y + g.h / 2))));
+    ga = clamp((260 - d) / 110, 0, 1);
+  }
+  if (ga > 0) {
+    ctx.globalAlpha = ga;
+    ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
+    ctx.fillStyle = C.GOAL; ctx.fillRect(g.x, g.y, g.w, g.h);
+    ctx.globalAlpha = 1;
+  }
   const cp = S.checkpoint;
   if (cp) {
     const col = S.cpActive ? '110,255,171' : '255,217,77';

@@ -78,7 +78,83 @@ function build(n) {
   return lvl;
 }
 
-for (let n = from; n <= to; n++) fs.writeFileSync(path.join(dir, `${prefix}${n}.json`), JSON.stringify(build(n)));
+
+// ---- open-field levels: odd-shaped map, scattered obstacles, hidden goal ----
+const FIELD_NAMES = COOP ? ['Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon'] : ['The Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon'];
+const SHAPES = [
+  (u, v) => u * u + v * v <= 1,
+  (u, v) => Math.abs(u) < 0.36 || Math.abs(v) < 0.36,
+  (u, v) => { const r = u * u + v * v; return r <= 1 && r >= 0.2; },
+  (u, v) => Math.abs(u) ** 0.7 + Math.abs(v) ** 0.7 <= 1,
+  (u, v) => u * u + v * v <= 1 && (u - 0.5) ** 2 + v * v >= 0.55,
+];
+
+function mergeRects(wall, W, H) {
+  const walls = [], active = new Map();
+  for (let y = 0; y <= H; y++) {
+    const runs = new Map();
+    for (let x = 0; y < H && x < W; x++) if (wall[y][x]) { let e = x; while (e + 1 < W && wall[y][e + 1]) e++; runs.set(x + ',' + (e - x + 1), 1); x = e; }
+    for (const [k2, r] of active) if (!runs.has(k2)) { walls.push([Number(k2.split(',')[0]), r.y0, Number(k2.split(',')[1]), y - r.y0]); active.delete(k2); }
+    for (const k2 of runs.keys()) if (!active.has(k2)) active.set(k2, { y0: y });
+  }
+  return walls;
+}
+
+function buildField(n, attempt = 0) {
+  const R = rng(n * 104729 + attempt), k = n - from, pick = (a) => a[Math.floor(R() * a.length)], ri = (a, b) => a + Math.floor(R() * (b - a + 1));
+  const W = 100 + 6 * k, H = 70 + 4 * k, mask = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => SHAPES[k % 5]((x + 0.5) / W * 2 - 1, (y + 0.5) / H * 2 - 1)));
+  const inMask = (x, y) => x >= 0 && y >= 0 && x < W && y < H && mask[y][x];
+  const wall = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => !mask[y][x] && [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => inMask(x + dx, y + dy)))));
+  const free = (x, y) => inMask(x, y) && !wall[y][x];
+  const flood = (sx, sy) => { const d = new Map([[sy * W + sx, 0]]), q = [[sx, sy]]; while (q.length) { const [x, y] = q.shift(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = x + dx, b = y + dy; if (free(a, b) && !d.has(b * W + a)) { d.set(b * W + a, d.get(y * W + x) + 1); q.push([a, b]); } } } return d; };
+  const open = []; for (let y = 4; y < H - 4; y++) for (let x = 4; x < W - 4; x++) if ([-3, 0, 3].every((dy) => [-3, 0, 3].every((dx) => free(x + dx, y + dy)))) open.push([x, y]);
+  const [sx, sy] = pick(open), d0 = flood(sx, sy);
+  const cand = open.filter(([x, y]) => d0.has(y * W + x)), maxD = Math.max(...cand.map(([x, y]) => d0.get(y * W + x)));
+  const far = cand.filter(([x, y]) => d0.get(y * W + x) >= maxD * 0.7), [gx, gy] = pick(far);
+  const near = (x, y, a, b, r) => Math.abs(x - a) <= r && Math.abs(y - b) <= r;
+  // scatter obstacles, keeping every gap at least 4 tiles wide so nothing gets sealed off
+  const obs = [], total = Math.floor(W * H / 170);
+  for (let t = 0; t < total * 12 && obs.length < total; t++) {
+    const w = ri(2, 7), h = ri(2, 6), x = ri(5, W - 5 - w), y = ri(5, H - 5 - h);
+    let ok = !near(x + w / 2, y + h / 2, sx, sy, 9 + w) && !near(x + w / 2, y + h / 2, gx, gy, 10 + w);
+    for (let j = y - 4; ok && j < y + h + 4; j++) for (let i = x - 4; ok && i < x + w + 4; i++) if (!free(i, j)) ok = false;
+    if (!ok) continue;
+    obs.push([x, y, w, h]);
+    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) wall[j][i] = true;
+  }
+  const spot = (minD, avoid = []) => { for (let t = 0; t < 400; t++) { const [x, y] = pick(cand); if (free(x, y) && (d0.get(y * W + x) ?? 0) >= minD && avoid.every(([a, b, r]) => !near(x, y, a, b, r))) return [x, y]; } return pick(cand); };
+  const extra = {};
+  if (COOP) {
+    // a walled vault around the goal: one player holds the outer plate to open the gate for the other
+    const side = pick(['top', 'bottom', 'left', 'right']);
+    for (let j = gy - 4; j <= gy + 5; j++) for (let i = gx - 4; i <= gx + 5; i++) wall[j][i] = !(i > gx - 4 && i < gx + 5 && j > gy - 4 && j < gy + 5);
+    const gate = { top: [gx - 1, gy - 4, 4, 1], bottom: [gx - 1, gy + 5, 4, 1], left: [gx - 4, gy - 1, 1, 4], right: [gx + 5, gy - 1, 1, 4] }[side];
+    for (let j = gate[1]; j < gate[1] + gate[3]; j++) for (let i = gate[0]; i < gate[0] + gate[2]; i++) wall[j][i] = false;
+    const far2 = { top: [gx, gy - 3], bottom: [gx, gy + 3], left: [gx - 3, gy], right: [gx + 3, gy] }[side];
+    let np; for (let t = 0; t < 600; t++) { const [x, y] = pick(cand); if (Math.max(Math.abs(x - gx), Math.abs(y - gy)) >= 12 && Math.max(Math.abs(x - gx), Math.abs(y - gy)) <= 28 && free(x, y) && free(x + 1, y + 1)) { np = [x, y]; break; } }
+    if (!np) return attempt < 20 ? buildField(n, attempt + 1) : null;
+    let cp; for (let t = 0; t < 600; t++) { const [x, y] = pick(cand); const dd = d0.get(y * W + x); if (dd > maxD * 0.3 && dd < maxD * 0.55 && [0, 1, 2, 3].every((a) => [0, 1, 2, 3].every((b) => free(x + a, y + b)))) { cp = [x, y]; break; } }
+    if (!cp) return attempt < 20 ? buildField(n, attempt + 1) : null;
+    Object.assign(extra, { gates: [{ id: 'a', rect: gate }], plates: [{ id: 'a', rect: [...np, 2, 2] }, { id: 'a', rect: [...far2, 2, 2] }], doors: [], switches: [], checkpoint: { rect: [...cp, 4, 4] } });
+  }
+  // reachability check from the start (gate counted as open)
+  const d1 = flood(sx, sy); const gOpen = COOP ? !!d1.get(gy * W + gx) || true : !!d1.get(gy * W + gx);
+  if (!COOP && !d1.has(gy * W + gx)) return attempt < 20 ? buildField(n, attempt + 1) : null;
+  const sp = (minD, avoid) => spot(minD, avoid);
+  const guardCount = (COOP ? 5 : 7) + k;
+  const guards = Array.from({ length: guardCount }, () => ({ wander: Array.from({ length: 4 }, () => sp(20, [[sx, sy, 14], [gx, gy, 6]])), speed: Math.round(50 + k * 2), pause: 1, erratic: 0.3 }));
+  const lights = [];
+  for (let i = 0; i < 6 + k; i++) lights.push({ type: 'blink', pos: sp(15, [[sx, sy, 12], [gx, gy, 6]]), radius: 90, period: 5, on: 1.2, offset: Math.round(R() * 5 * 10) / 10 });
+  for (let i = 0; i < 4 + k; i++) lights.push({ type: 'sweep', pos: sp(15, [[sx, sy, 12], [gx, gy, 6]]), arc: pick([[0, 180], [90, 270], [180, 360], [270, 450]]), period: 5, fov: 40, range: 130 });
+  const lvl = { id: n, hideGoal: true, diff: Math.round((1 + k * 0.03) * 100) / 100, name: FIELD_NAMES[k % 5], size: [W, H], tileSize: 32 };
+  if (COOP) Object.assign(lvl, { playerStarts: [[sx, sy], [sx + 1, sy + 1]] }); else lvl.playerStart = [sx, sy];
+  Object.assign(lvl, { goal: { rect: [gx, gy, 2, 2] }, walls: mergeRects(wall, W, H), ...extra, guards, lights });
+  if (n === from) lvl.hint = COOP ? 'The exit is hidden somewhere. Search for its glow. A vault gate needs a plate held.' : 'The exit is hidden somewhere in this field. Search for its glow.';
+  return lvl;
+}
+
+const FIELD = COOP ? from >= 26 : from >= 36;
+for (let n = from; n <= to; n++) fs.writeFileSync(path.join(dir, `${prefix}${n}.json`), JSON.stringify(FIELD ? buildField(n) : build(n)));
 // register in service worker precache
 let sw = fs.readFileSync(path.join(__dirname, '../docs/sw.js'), 'utf8');
 for (let n = from; n <= to; n++) {
