@@ -11,6 +11,7 @@ const DOWN_KEYS: Array[Key] = [KEY_S, KEY_DOWN]
 var joystick_vector: Vector2 = Vector2.ZERO
 
 var _sprite: AnimatedSprite2D
+var _direction: String = "down"
 
 @onready var _shape: CollisionShape2D = $CollisionShape2D
 
@@ -31,11 +32,11 @@ func _physics_process(_delta: float) -> void:
 		direction = joystick_vector
 	velocity = direction * Config.PLAYER_SPEED
 	move_and_slide()
-	if velocity == Vector2.ZERO:
-		_sprite.stop()
-		_sprite.frame = 0
+	if velocity != Vector2.ZERO:
+		_direction = CharacterSprites.direction_name(velocity)
+		_sprite.play(_direction)
 	else:
-		_sprite.play(CharacterSprites.direction_name(velocity))
+		_sprite.play("idle_" + _direction)
 
 
 func set_joystick_vector(vector: Vector2) -> void:

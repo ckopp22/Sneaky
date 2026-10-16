@@ -12,7 +12,7 @@ var _sprite: AnimatedSprite2D
 
 
 func _ready() -> void:
-	bubble_y = -72.0
+	bubble_y = -66.0
 	_sprite = CharacterSprites.create("guard")
 	add_child(_sprite)
 
@@ -30,12 +30,8 @@ func setup(data: Dictionary, tile: float) -> void:
 
 
 func _update_state(delta: float) -> void:
-	var moving: bool = _patrol(delta)
-	if moving:
-		_sprite.play(CharacterSprites.direction_name(facing))
-	else:
-		_sprite.stop()
-		_sprite.frame = 0
+	var direction: String = CharacterSprites.direction_name(facing)
+	_sprite.play(direction if _patrol(delta) else "idle_" + direction)
 
 
 func _patrol(delta: float) -> bool:
