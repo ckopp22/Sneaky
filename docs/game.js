@@ -211,11 +211,19 @@ function canSee(v, p) {
 
 function updateVision(v, dt) {
   if (v.kind === 'guard') patrol(v, dt); else sweepLight(v, dt);
-  if (!v.active) { v.poly = []; v.seen = 0; return false; }
+  const spotted = [];
+  if (!v.active) { v.poly = []; v.seen = 0; v.times = []; return spotted; }
   updatePoly(v);
-  v.seen = S.players.some((p) => canSee(v, p)) ? v.seen + dt : 0;
-  if (v.seen >= C.GRACE && !v.alerted) { v.alerted = true; return true; }
-  return false;
+  v.times = v.times || [];
+  let seen = 0;
+  S.players.forEach((p, i) => {
+    if (p.dead || p.invuln > 0 || !canSee(v, p)) { v.times[i] = 0; return; }
+    v.times[i] = (v.times[i] || 0) + dt;
+    seen = Math.max(seen, v.times[i]);
+    if (v.times[i] >= C.GRACE) { spotted.push(i); v.times[i] = 0; }
+  });
+  v.seen = seen;
+  return spotted;
 }
 
 // ---------- level ----------
@@ -232,6 +240,10 @@ async function loadLevel(id, coop = false) {
   S.players = coop
     ? (data.playerStarts ?? [[0, 0], [0, 0]]).map((a, i) => ({ ...(data.playerStarts ? at(a) : { x: sx, y: sy + (i ? 11 : -11) }), color: i ? C.PLAYER2 : C.PLAYER }))
     : [{ x: sx, y: sy, color: C.PLAYER }];
+  S.players.forEach((p) => Object.assign(p, { alpha: 1, dead: false, invuln: 0, respawnT: 0 }));
+  S.checkpoint = data.checkpoint ? rect(data.checkpoint.rect) : null;
+  S.cpActive = false;
+  S.failT = 1.2;
   S.remoteInput = { x: 0, y: 0 };
   S.coopMenu = false;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
@@ -240,9 +252,10 @@ async function loadLevel(id, coop = false) {
 }
 
 const me = () => S.players[S.me];
+const camTarget = () => (me().dead && S.players.find((p) => !p.dead)) || me();
 
 function followCamera() {
-  const { w, h } = S.view, { w: mw, h: mh } = S.map, p = me();
+  const { w, h } = S.view, { w: mw, h: mh } = S.map, p = camTarget();
   S.cam.x = mw > w ? Math.min(Math.max(p.x, w / 2), mw - w / 2) : mw / 2;
   S.cam.y = mh > h ? Math.min(Math.max(p.y, h / 2), mh - h / 2) : mh / 2;
 }
@@ -261,17 +274,42 @@ function movePlayer(p, dir, dt) {
   for (let i = 0; i < 3; i++) for (const w of S.walls) pushOut(p, w);
 }
 
+function revive(p, i) {
+  const c = S.checkpoint;
+  Object.assign(p, { dead: false, invuln: 1.5, x: c.x + c.w / 2 + (i ? 10 : -10), y: c.y + c.h / 2 });
+}
+
+function killPlayer(i) {
+  if (S.players.length === 1) { endLevel(false); return; }
+  const p = S.players[i];
+  if (p.dead) return;
+  p.dead = true; p.respawnT = 3;
+  audio.playAlert();
+}
+
 function step(dt) {
   S.players.forEach((p, i) => {
+    if (p.dead) return;
     const dir = i === S.me ? inputVector() : S.remoteInput;
     movePlayer(p, dir, dt);
     if (i === S.me) audio.setRolling(dir.x !== 0 || dir.y !== 0);
   });
+  if (me().dead) audio.setRolling(false);
   followCamera();
-  if (S.players.every((p) => touchesRect(p, S.goal))) return endLevel(true);
-  let spotted = false;
-  for (const v of S.visions) spotted = updateVision(v, dt) || spotted;
-  if (spotted) endLevel(false);
+  if (S.players.some((p) => !p.dead && touchesRect(p, S.goal))) return endLevel(true);
+  if (S.checkpoint && !S.cpActive && S.players.some((p) => !p.dead && touchesRect(p, S.checkpoint))) {
+    S.cpActive = true;
+    S.players.forEach((p, i) => { if (p.dead) revive(p, i); });
+  }
+  S.players.forEach((p, i) => {
+    p.alpha = Math.min(1, Math.max(0, p.alpha + (p.dead ? -dt / 1.5 : dt / 0.6)));
+    p.invuln = Math.max(0, p.invuln - dt);
+    if (p.dead && S.cpActive && (p.respawnT -= dt) <= 0) revive(p, i);
+  });
+  const spotted = new Set();
+  for (const v of S.visions) updateVision(v, dt).forEach((i) => spotted.add(i));
+  spotted.forEach(killPlayer);
+  if (S.mode === 'playing' && S.players.every((p) => p.dead) && (S.failT -= dt) <= 0) endLevel(false);
 }
 
 function endLevel(won) {
@@ -353,9 +391,20 @@ function drawWorld() {
   const g = S.goal;
   ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
   ctx.fillStyle = C.GOAL; ctx.fillRect(g.x, g.y, g.w, g.h);
+  const cp = S.checkpoint;
+  if (cp) {
+    const col = S.cpActive ? '110,255,171' : '255,217,77';
+    if (S.cpActive) ctx.drawImage(IMG.glow, cp.x - 32, cp.y - 32, cp.w + 64, cp.h + 64);
+    ctx.fillStyle = `rgba(${col},0.2)`; ctx.fillRect(cp.x, cp.y, cp.w, cp.h);
+    ctx.strokeStyle = `rgba(${col},0.7)`; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+    ctx.strokeRect(cp.x, cp.y, cp.w, cp.h); ctx.setLineDash([]);
+  }
   S.visions.forEach(drawVision);
   for (const p of S.players) {
+    if (p.alpha <= 0.01) continue;
+    ctx.globalAlpha = p.alpha;
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
   }
   ctx.restore();
   // ambient darkness with a glow around the player
@@ -364,13 +413,18 @@ function drawWorld() {
   lctx.fillStyle = C.AMBIENT; lctx.fillRect(0, 0, w, h);
   lctx.globalCompositeOperation = 'lighter';
   const lr = 64 * C.PLAYER_LIGHT_SCALE;
-  lctx.drawImage(tinted, me().x + ox - lr, me().y + oy - lr, lr * 2, lr * 2);
+  const lp = camTarget();
+  lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'multiply';
   ctx.drawImage(lightMap, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   ctx.drawImage(IMG.vignette, 0, 0, w, h);
+  if (me().dead && S.mode === 'playing') {
+    ctx.fillStyle = 'rgba(232,238,250,0.9)'; ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(S.cpActive ? 'Respawning...' : 'You were spotted. Get your partner to the checkpoint!', w / 2, h - 24);
+  }
   drawJoystick();
 }
 
@@ -605,15 +659,19 @@ function onPartnerLeft() {
 
 function snapshot() {
   const r = (n) => Math.round(n * 10) / 10;
-  return { t: 's', p: S.players.map((p) => [r(p.x), r(p.y)]),
+  return { t: 's', c: S.cpActive ? 1 : 0, p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0]) };
 }
 
 function applySnapshot(m) {
-  m.p.forEach(([x, y], i) => {
+  S.cpActive = !!m.c;
+  m.p.forEach(([x, y, alpha, dead], i) => {
     const q = S.players[i];
     if (!q) return;
+    if (dead && !q.dead) audio.playAlert();
+    q.ta = alpha; q.dead = !!dead;
     if (i === S.me) {
+      if (q.dead) { q.x = x; q.y = y; return; }
       const ex = x - q.x, ey = y - q.y;
       if (Math.hypot(ex, ey) > 40) { q.x = x; q.y = y; } else { q.x += ex * 0.2; q.y += ey * 0.2; }
     } else {
@@ -630,10 +688,11 @@ function applySnapshot(m) {
 }
 
 function guestStep(dt) {
-  const dir = inputVector(), k = 1 - Math.exp(-dt * 20);
-  movePlayer(me(), dir, dt);
+  const dir = me().dead ? { x: 0, y: 0 } : inputVector(), k = 1 - Math.exp(-dt * 20);
+  if (!me().dead) movePlayer(me(), dir, dt);
   audio.setRolling(dir.x !== 0 || dir.y !== 0);
   S.players.forEach((q, i) => {
+    if (q.ta !== undefined) q.alpha += (q.ta - q.alpha) * k;
     if (i !== S.me && q.tx !== undefined) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; }
   });
   for (const v of S.visions) {
