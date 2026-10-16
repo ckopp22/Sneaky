@@ -37,7 +37,7 @@ const store = {
 const audio = (() => {
   const saved = store.get();
   const make = (name, volume, loop = false) => Object.assign(new Audio(`assets/audio/${name}.mp3`), { volume, loop });
-  const a = { music: saved.music !== false, sfx: saved.sfx !== false, track: 0, started: false, rolling: false };
+  const a = { active: true, music: saved.music !== false, sfx: saved.sfx !== false, track: 0, started: false, rolling: false };
   const tracks = [1, 2, 3].map((n) => make(`music${n}`, 0.4));
   const alert = make('alert', 0.63), win = make('win', 0.8), roll = make('rolling', 0.4, true);
   const level = () => (a.ducked ? 0.15 : 0.4);
@@ -46,7 +46,7 @@ const audio = (() => {
     t.volume = level();
     t.currentTime = 0;
     t.onended = () => { a.track = (a.track + 1) % tracks.length; playTrack(); };
-    if (a.music) t.play().catch(() => { a.started = false; });
+    if (a.music && a.active) t.play().catch(() => { a.started = false; });
   };
   a.start = () => { if (!a.started) { a.started = true; playTrack(); } };
   a.duck = (on) => { a.ducked = on; tracks[a.track].volume = level(); };
@@ -55,11 +55,20 @@ const audio = (() => {
     if (on && a.started) tracks[a.track].play().catch(() => {}); else tracks[a.track].pause();
   };
   a.setSfx = (on) => { a.sfx = on; store.set({ sfx: on }); a.setRolling(false); };
-  const play = (s) => { if (a.sfx) { s.currentTime = 0; s.play().catch(() => {}); } };
+  const play = (s) => { if (a.sfx && a.active) { s.currentTime = 0; s.play().catch(() => {}); } };
+  a.setActive = (on) => {
+    a.active = on;
+    if (!on) {
+      for (const s of [...tracks, alert, win, roll]) s.pause();
+      a.rolling = false;
+    } else if (a.started && a.music) {
+      tracks[a.track].play().catch(() => {});
+    }
+  };
   a.playAlert = () => play(alert);
   a.playWin = () => play(win);
   a.setRolling = (on) => {
-    on = on && a.sfx;
+    on = on && a.sfx && a.active;
     if (on === a.rolling) return;
     a.rolling = on;
     if (on) roll.play().catch(() => {}); else roll.pause();
@@ -522,6 +531,9 @@ window.addEventListener('blur', () => { S.keys.clear(); if (!inCoop()) pauseGame
 document.addEventListener('visibilitychange', () => { if (document.hidden && !inCoop()) pauseGame(); });
 window.addEventListener('pointerdown', () => audio.start());
 window.addEventListener('resize', resize);
+const syncAudio = () => audio.setActive(!document.hidden && document.hasFocus());
+document.addEventListener('visibilitychange', syncAudio);
+for (const t of ['blur', 'focus', 'pagehide', 'pageshow']) window.addEventListener(t, syncAudio);
 
 function joyMove(e) {
   const j = S.joy, k = S.view.scale;
