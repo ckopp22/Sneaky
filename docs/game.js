@@ -734,6 +734,7 @@ $('lobbyback').onclick = showSelect;
 // ---------- main loop ----------
 let last = 0, acc = 0;
 function frame(now) {
+  requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
   if (S.mode === 'playing') {
@@ -743,8 +744,7 @@ function frame(now) {
   } else {
     acc = 0;
   }
-  if (S.mode !== 'select' && S.mode !== 'loading') drawWorld();
-  requestAnimationFrame(frame);
+  if (S.goal && ['playing', 'paused', 'won', 'failed'].includes(S.mode)) drawWorld();
 }
 
 async function boot() {
