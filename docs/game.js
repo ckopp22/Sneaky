@@ -542,7 +542,7 @@ function buildSelect() {
   }
 }
 
-const SCREENS = ['mainmenu', 'select', 'lobby', 'coopsel', 'popup', 'pause', 'game', 'settings', 'settingsbtn'];
+const SCREENS = ['mainmenu', 'select', 'lobby', 'coopsel', 'popup', 'pause', 'game', 'settings', 'settingsbtn', 'backbtn'];
 function hideAll() { for (const id of SCREENS) show($(id), false); }
 
 function showMenu() {
@@ -563,7 +563,7 @@ function showSelect() {
   audio.setRolling(false);
   hideAll();
   buildSelect();
-  show($('select'), true);
+  show($('select'), true); show($('backbtn'), true);
 }
 
 async function startLevel(id) {
@@ -638,7 +638,6 @@ $('retry').onclick = () => (inCoop() ? startCoop(S.level) : startLevel(S.level))
 $('next').onclick = () => (inCoop() ? startCoop(S.level + 1) : startLevel(S.level + 1));
 $('menu').onclick = () => (inCoop() || net.role ? showMenu() : showSelect());
 $('solo').onclick = showSelect;
-$('selback').onclick = showMenu;
 $('settingsbtn').onclick = () => { show($('settings'), true); };
 const closeSettings = () => { show($('settings'), false); $('reset').textContent = 'Reset Progress'; };
 $('sclose').onclick = closeSettings;
@@ -684,7 +683,7 @@ function showLobby() {
   hideAll();
   $('code').textContent = '';
   lobbyStatus('Host a game, or enter a friend’s code to join.');
-  show($('lobby'), true);
+  show($('lobby'), true); show($('backbtn'), true);
 }
 
 function hostGame() {
@@ -760,7 +759,7 @@ function showCoopPicker(highest) {
     }
     grid.appendChild(b);
   }
-  show($('coopsel'), true);
+  show($('coopsel'), true); show($('backbtn'), true);
 }
 
 function onNetData(m) {
@@ -852,8 +851,7 @@ function netTick(dt) {
 $('coop').onclick = showLobby;
 $('host').onclick = hostGame;
 $('join').onclick = joinGame;
-$('lobbyback').onclick = showMenu;
-$('cleave').onclick = showMenu;
+$('backbtn').onclick = showMenu;
 $('pick').onclick = () => showCoopPicker();
 
 // ---------- main loop ----------

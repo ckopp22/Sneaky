@@ -61,7 +61,7 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 #toggles { display: flex; gap: 8px; }
 #music { width: 100px; }
 
-#coop, #cleave, #solo, #selback { width: 200px; }
+#coop, #solo { width: 200px; }
 #mainmenu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 14vh 16px 16px; gap: 0; }
 #mainmenu img { width: 420px; max-width: 90%; image-rendering: pixelated; }
 .menubtns { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
@@ -107,14 +107,12 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
   <img src="assets/ui/graphics/logo_sneaky.png" alt="Sneaky">
   <h1>Select Level</h1>
   <div id="grid"></div>
-  <button class="btn secondary" id="selback">Back</button>
 </div>
 
 <div id="coopsel" class="screen" hidden>
   <img src="assets/ui/graphics/logo_sneaky.png" alt="Sneaky">
   <h1 id="cstatus"></h1>
   <div id="cgrid"></div>
-  <button class="btn secondary" id="cleave">Leave</button>
 </div>
 
 <div id="lobby" class="screen" hidden>
@@ -126,7 +124,6 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
     <input id="codeinput" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false">
     <button class="btn primary" id="join">Join Game</button>
     <p id="lobbystatus"></p>
-    <button class="btn secondary" id="lobbyback">Back</button>
   </div>
 </div>
 
@@ -135,6 +132,7 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
     <button class="btn square" id="sfx"><img alt="Sound" src="assets/ui/icons/icon_sound_on.png"></button>
     <button class="btn secondary" id="music">Music</button>
   </div>
+  <button class="btn square" id="backbtn" hidden><img alt="Back" src="assets/ui/icons/icon_back.png"></button>
   <button class="btn square" id="settingsbtn" hidden><img alt="Settings" src="assets/ui/icons/icon_settings.png"></button>
   <button class="btn square" id="pause" hidden><img alt="Pause" src="assets/ui/icons/icon_pause.png"></button>
 </div>
