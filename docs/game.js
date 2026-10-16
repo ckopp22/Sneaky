@@ -884,20 +884,26 @@ $('pick').onclick = () => showCoopPicker();
 
 // ---------- main menu guard ----------
 const menuCanvas = $('menuguard'), mctx = menuCanvas.getContext('2d');
+const menuGuard = { heading: 0, last: 0 };
 function drawMenuGuard(now) {
   const t = now / 1000, W = menuCanvas.width, H = menuCanvas.height;
+  const dt = Math.min(t - menuGuard.last, 0.1);
+  menuGuard.last = t;
   mctx.clearRect(0, 0, W, H);
-  const gx = W / 2 + Math.sin(t * 0.55) * W * 0.3, gy = H * 0.2;
-  const dir = Math.PI / 2 + Math.sin(t * 1.4) * rad(50), half = rad(32), range = H * 0.75;
+  const gx = W / 2 + Math.sin(t * 0.55) * W * 0.3, gy = H * 0.2 + Math.sin(t * 9) * 2;
+  const want = Math.cos(t * 0.55) >= 0 ? 0 : Math.PI;
+  menuGuard.heading += clamp(angleDiff(menuGuard.heading, want), -rad(150) * dt, rad(150) * dt);
+  const beam = Math.PI / 2 + Math.sin(t * 1.4) * rad(50), half = rad(32), range = H * 0.75;
   mctx.save();
   mctx.translate(gx, gy);
   const grad = mctx.createRadialGradient(0, 0, 0, 0, 0, range);
   grad.addColorStop(0, 'rgba(217,230,255,0.45)'); grad.addColorStop(1, 'rgba(217,230,255,0)');
   mctx.fillStyle = grad;
-  mctx.beginPath(); mctx.moveTo(0, 0); mctx.arc(0, 0, range, dir - half, dir + half); mctx.closePath(); mctx.fill();
+  mctx.beginPath(); mctx.moveTo(0, 0); mctx.arc(0, 0, range, beam - half, beam + half); mctx.closePath(); mctx.fill();
+  const pulse = 1 + 0.07 * Math.sin(t * 9);
   mctx.fillStyle = C.GUARD; mctx.beginPath();
   for (let i = 0; i < 16; i++) {
-    const r = i % 2 === 0 ? 30 : 10, a = dir + Math.PI * i / 8;
+    const r = (i % 2 === 0 ? 30 : 10) * pulse, a = menuGuard.heading + Math.PI * i / 8;
     mctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
   }
   mctx.closePath(); mctx.fill();
