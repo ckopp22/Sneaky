@@ -4,8 +4,6 @@ extends Node2D
 signal goal_reached
 signal player_spotted
 
-const FLOOR_TEXTURE: Texture2D = preload("res://assets/tiles/floor.png")
-const WALL_TEXTURE: Texture2D = preload("res://assets/tiles/wall.png")
 const GOAL_GLOW: Texture2D = preload("res://assets/ui/graphics/goal_glow.png")
 const GUARD_SCENE: PackedScene = preload("res://scenes/guard.tscn")
 const LIGHT_SCENE: PackedScene = preload("res://scenes/light.tscn")
@@ -91,9 +89,7 @@ func _on_goal_body_entered(body: Node2D) -> void:
 
 
 func _draw() -> void:
-	draw_texture_rect(FLOOR_TEXTURE, Rect2(Vector2.ZERO, map_size), true)
 	for wall: Rect2 in _walls:
-		draw_texture_rect(WALL_TEXTURE, wall, true)
-		draw_rect(wall, Config.WALL_OUTLINE_COLOR, false, 2.0)
+		draw_rect(wall, Config.WALL_COLOR)
 	draw_texture_rect(GOAL_GLOW, _goal.grow(32.0), false)
 	draw_rect(_goal, Config.GOAL_COLOR)

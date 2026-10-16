@@ -8,14 +8,6 @@ var pause_time: float = Config.GUARD_PAUSE
 var _next: int = 1
 var _step_dir: int = 1
 var _pause_left: float = 0.0
-var _sprite: AnimatedSprite2D
-var _direction: String = "down"
-
-
-func _ready() -> void:
-	bubble_y = -66.0
-	_sprite = CharacterSprites.create("guard")
-	add_child(_sprite)
 
 
 func setup(data: Dictionary, tile: float) -> void:
@@ -31,8 +23,7 @@ func setup(data: Dictionary, tile: float) -> void:
 
 
 func _update_state(delta: float) -> void:
-	_direction = CharacterSprites.direction_name(facing, _direction)
-	_sprite.play(_direction if _patrol(delta) else "idle_" + _direction)
+	_patrol(delta)
 
 
 func _patrol(delta: float) -> bool:
@@ -53,3 +44,7 @@ func _patrol(delta: float) -> bool:
 	facing = to_goal.normalized()
 	position += facing * step
 	return true
+
+
+func _draw_body() -> void:
+	draw_circle(Vector2.ZERO, Config.GUARD_RADIUS, Config.GUARD_COLOR)
