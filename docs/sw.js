@@ -1,4 +1,4 @@
-const CACHE = 'sneaky-v12';
+const CACHE = 'sneaky-v13';
 const FILES = [
  "./",
  "index.html",
@@ -14,6 +14,16 @@ const FILES = [
  "assets/levels/coop/coop8.json",
  "assets/levels/coop/coop9.json",
  "assets/levels/coop/coop10.json",
+ "assets/levels/coop/coop11.json",
+ "assets/levels/coop/coop12.json",
+ "assets/levels/coop/coop13.json",
+ "assets/levels/coop/coop14.json",
+ "assets/levels/coop/coop15.json",
+ "assets/levels/coop/coop16.json",
+ "assets/levels/coop/coop17.json",
+ "assets/levels/coop/coop18.json",
+ "assets/levels/coop/coop19.json",
+ "assets/levels/coop/coop20.json",
  "manifest.webmanifest",
  "icon.png",
  "icon-192.png",
