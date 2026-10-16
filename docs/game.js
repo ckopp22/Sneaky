@@ -1137,4 +1137,27 @@ async function boot() {
 }
 boot();
 
+// ---------- update check ----------
+(() => {
+  const banner = $('update');
+  const sig = async () => {
+    try {
+      const text = (await Promise.all(['game.js', 'index.html'].map((u) => fetch(u, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))))).join('');
+      let h = 5381;
+      for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+      return text ? h : null;
+    } catch { return null; }
+  };
+  let base = null;
+  const check = async () => {
+    const now = await sig();
+    if (now === null) return;
+    if (base === null) base = now; else if (now !== base) banner.hidden = false;
+  };
+  banner.onclick = () => location.reload();
+  window.addEventListener('load', check);
+  setInterval(check, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+})();
+
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
