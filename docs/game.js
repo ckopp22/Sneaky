@@ -383,10 +383,13 @@ function buildSelect() {
     const b = document.createElement('button');
     b.className = 'btn level' + (id <= highest ? ' done' : '');
     if (id <= highest + 1) {
-      b.textContent = `${id}\n${S.names[id] ?? ''}${id <= highest ? '\nDone' : ''}`;
+      b.textContent = `${id}\n${S.names[id] ?? ''}`;
       b.onclick = () => startLevel(id);
     } else {
-      b.textContent = `${id}\nLocked`; b.disabled = true;
+      b.textContent = `${id}\n`; b.disabled = true;
+      const lock = document.createElement('img');
+      lock.src = 'assets/ui/icons/icon_lock.png';
+      b.appendChild(lock);
     }
     grid.appendChild(b);
   }
