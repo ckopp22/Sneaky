@@ -19,12 +19,11 @@ func _ready() -> void:
 	(_shape.shape as CircleShape2D).radius = Config.PLAYER_RADIUS
 
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	var direction: Vector2 = _keyboard_vector()
 	if direction == Vector2.ZERO:
 		direction = joystick_vector
-	var rate: float = Config.PLAYER_ACCEL if direction != Vector2.ZERO else Config.PLAYER_FRICTION
-	velocity = velocity.move_toward(direction * Config.PLAYER_SPEED, rate * delta)
+	velocity = direction * Config.PLAYER_SPEED
 	move_and_slide()
 
 
