@@ -1,7 +1,8 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 12, COOP_LEVEL_COUNT: 5, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together'], STEP: 1 / 60,
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 12, COOP_LEVEL_COUNT: 10, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+    'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 44, JOY_DEAD: 0.15, JOY_SCALE: 2,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
@@ -78,7 +79,7 @@ const audio = (() => {
 
 // ---------- state ----------
 const S = {
-  mode: 'loading', level: 1, names: [], walls: [], goal: null, map: { w: 0, h: 0 },
+  mode: 'loading', level: 1, names: [], walls: [], goal: null, plates: [], switches: [], barriers: [], solid: [], map: { w: 0, h: 0 },
   players: [{ x: 0, y: 0 }], me: 0, remoteInput: { x: 0, y: 0 }, coopMenu: false, visions: [], keys: new Set(), joy: { id: -1, ox: 0, oy: 0, kx: 0, ky: 0, vx: 0, vy: 0 },
   cam: { x: 0, y: 0 }, view: { w: C.VIEW_W, h: C.VIEW_H, scale: 1, dpr: 1 },
 };
@@ -87,7 +88,7 @@ const S = {
 function raycast(ax, ay, bx, by) {
   const dx = bx - ax, dy = by - ay;
   let best = 2;
-  for (const r of S.walls) {
+  for (const r of S.solid) {
     let t0 = 0, t1 = 1, miss = false;
     for (const [a, d, lo, hi] of [[ax, dx, r.x, r.x + r.w], [ay, dy, r.y, r.y + r.h]]) {
       if (Math.abs(d) < 1e-9) {
@@ -242,6 +243,11 @@ async function loadLevel(id, coop = false) {
   S.level = id;
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
   S.walls = data.walls.map(rect);
+  const trig = (list) => (list ?? []).map((o) => ({ id: o.id, ...rect(o.rect), on: false }));
+  const barrier = (list, kind) => (list ?? []).map((o) => ({ id: o.id, kind, ...rect(o.rect), open: false }));
+  S.plates = trig(data.plates); S.switches = trig(data.switches);
+  S.barriers = [...barrier(data.gates, 'gate'), ...barrier(data.doors, 'door')];
+  updateSolids();
   S.goal = rect(data.goal.rect);
   const ps = data.playerStart ?? data.playerStarts[0];
   const sx = (ps[0] + 0.5) * tile, sy = (ps[1] + 0.5) * tile;
@@ -263,6 +269,18 @@ async function loadLevel(id, coop = false) {
 const me = () => S.players[S.me];
 const camTarget = () => (me().dead && S.players.find((p) => !p.dead)) || me();
 
+function updateSolids() {
+  S.solid = S.walls.concat(S.barriers.filter((b) => !b.open));
+}
+
+function updateMechanics() {
+  const alive = S.players.filter((p) => !p.dead);
+  for (const pl of S.plates) pl.on = alive.some((p) => touchesRect(p, pl));
+  for (const sw of S.switches) if (!sw.on && alive.some((p) => touchesRect(p, sw))) sw.on = true;
+  for (const b of S.barriers) b.open = (b.kind === 'gate' ? S.plates : S.switches).some((t) => t.id === b.id && t.on);
+  updateSolids();
+}
+
 function followCamera() {
   const { w, h } = S.view, { w: mw, h: mh } = S.map, p = camTarget();
   S.cam.x = mw > w ? Math.min(Math.max(p.x, w / 2), mw - w / 2) : mw / 2;
@@ -280,7 +298,7 @@ function inputVector() {
 
 function movePlayer(p, dir, dt) {
   p.x += dir.x * C.PLAYER_SPEED * dt; p.y += dir.y * C.PLAYER_SPEED * dt;
-  for (let i = 0; i < 3; i++) for (const w of S.walls) pushOut(p, w);
+  for (let i = 0; i < 3; i++) for (const w of S.solid) pushOut(p, w);
 }
 
 function revive(p, i) {
@@ -305,6 +323,7 @@ function step(dt) {
   });
   if (me().dead) audio.setRolling(false);
   followCamera();
+  updateMechanics();
   if (S.players.some((p) => !p.dead && touchesRect(p, S.goal))) return endLevel(true);
   if (S.checkpoint && !S.cpActive && S.players.some((p) => !p.dead && touchesRect(p, S.checkpoint))) {
     S.cpActive = true;
@@ -367,6 +386,38 @@ function tintLight() {
   t.drawImage(IMG.circle, 0, 0, size, size);
 }
 
+const ID_COLORS = { a: '90,160,255', b: '255,159,67', c: '199,125,255', d: '255,93,143', s: '255,216,77', t: '255,120,200' };
+const idColor = (id) => ID_COLORS[id] ?? '200,200,200';
+
+function drawMechanics() {
+  ctx.lineWidth = 2;
+  for (const pl of S.plates) {
+    const c = idColor(pl.id);
+    ctx.fillStyle = `rgba(${c},${pl.on ? 0.6 : 0.18})`; ctx.fillRect(pl.x, pl.y, pl.w, pl.h);
+    ctx.strokeStyle = `rgba(${c},0.9)`; ctx.strokeRect(pl.x + 3, pl.y + 3, pl.w - 6, pl.h - 6);
+  }
+  for (const sw of S.switches) {
+    const c = idColor(sw.id), cx = sw.x + sw.w / 2, cy = sw.y + sw.h / 2;
+    ctx.fillStyle = sw.on ? 'rgb(110,255,171)' : `rgb(${c})`;
+    ctx.beginPath(); ctx.arc(cx, cy, 10, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(10,13,20,0.7)'; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, TAU); ctx.stroke();
+  }
+  for (const b of S.barriers) {
+    const c = idColor(b.id);
+    if (b.open) {
+      ctx.strokeStyle = `rgba(${c},0.35)`; ctx.setLineDash([4, 6]); ctx.strokeRect(b.x, b.y, b.w, b.h); ctx.setLineDash([]);
+      continue;
+    }
+    ctx.fillStyle = b.kind === 'gate' ? `rgba(${c},0.85)` : `rgb(${c})`;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = 'rgba(10,13,20,0.5)';
+    ctx.beginPath();
+    if (b.kind === 'gate') for (let y = b.y + 8; y < b.y + b.h; y += 10) { ctx.moveTo(b.x, y); ctx.lineTo(b.x + b.w, y); }
+    else { ctx.moveTo(b.x + 2, b.y + 2); ctx.lineTo(b.x + b.w - 2, b.y + b.h - 2); }
+    ctx.stroke();
+  }
+}
+
 function drawVision(v) {
   ctx.save();
   ctx.translate(v.x, v.y);
@@ -409,6 +460,7 @@ function drawWorld() {
     ctx.strokeStyle = `rgba(${col},0.7)`; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
     ctx.strokeRect(cp.x, cp.y, cp.w, cp.h); ctx.setLineDash([]);
   }
+  drawMechanics();
   S.visions.forEach(drawVision);
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
@@ -701,12 +753,16 @@ function onPartnerLeft() {
 
 function snapshot() {
   const r = (n) => Math.round(n * 10) / 10;
-  return { t: 's', c: S.cpActive ? 1 : 0, p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0]),
+  return { t: 's', c: S.cpActive ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
+    a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0]) };
 }
 
 function applySnapshot(m) {
   S.cpActive = !!m.c;
+  if (m.o) { m.o.forEach((o, i) => { if (S.barriers[i]) S.barriers[i].open = !!o; }); }
+  if (m.a) { [...S.plates, ...S.switches].forEach((t, i) => { t.on = !!m.a[i]; }); }
+  updateSolids();
   m.p.forEach(([x, y, alpha, dead], i) => {
     const q = S.players[i];
     if (!q) return;
