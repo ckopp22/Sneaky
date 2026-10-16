@@ -1,7 +1,7 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 12, STEP: 1 / 60,
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 12, COOP_LEVEL_COUNT: 5, STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 44, JOY_DEAD: 0.15, JOY_SCALE: 2,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
@@ -220,14 +220,17 @@ function updateVision(v, dt) {
 
 // ---------- level ----------
 async function loadLevel(id, coop = false) {
-  const data = await (await fetch(`assets/levels/level${id}.json`)).json();
+  const data = await (await fetch(coop ? `assets/levels/coop/coop${id}.json` : `assets/levels/level${id}.json`)).json();
   const tile = data.tileSize ?? 32, rect = (a) => ({ x: a[0] * tile, y: a[1] * tile, w: a[2] * tile, h: a[3] * tile });
   S.level = id;
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
   S.walls = data.walls.map(rect);
   S.goal = rect(data.goal.rect);
-  const sx = (data.playerStart[0] + 0.5) * tile, sy = (data.playerStart[1] + 0.5) * tile;
-  S.players = coop ? [{ x: sx, y: sy - 11, color: C.PLAYER }, { x: sx, y: sy + 11, color: C.PLAYER2 }]
+  const ps = data.playerStart ?? data.playerStarts[0];
+  const sx = (ps[0] + 0.5) * tile, sy = (ps[1] + 0.5) * tile;
+  const at = (a) => ({ x: (a[0] + 0.5) * tile, y: (a[1] + 0.5) * tile });
+  S.players = coop
+    ? (data.playerStarts ?? [[0, 0], [0, 0]]).map((a, i) => ({ ...(data.playerStarts ? at(a) : { x: sx, y: sy + (i ? 11 : -11) }), color: i ? C.PLAYER2 : C.PLAYER }))
     : [{ x: sx, y: sy, color: C.PLAYER }];
   S.remoteInput = { x: 0, y: 0 };
   S.coopMenu = false;
@@ -288,7 +291,7 @@ function finishLevel(won) {
   }
   const coop = inCoop();
   showPopup(won ? 'Level Complete!' : 'Bummer... try again?',
-    { resume: false, retry: !won && (!coop || net.role === 'host'), next: !coop && won && S.level < C.LEVEL_COUNT });
+    { resume: false, retry: !won && (!coop || net.role === 'host'), next: won && S.level < (coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT) && (!coop || net.role === 'host') });
 }
 
 // ---------- rendering ----------
@@ -493,7 +496,7 @@ $('music').onclick = () => { audio.setMusic(!audio.music); refreshToggles(); };
 $('pause').onclick = pauseGame;
 $('resume').onclick = resumeGame;
 $('retry').onclick = () => (inCoop() ? startCoop(S.level) : startLevel(S.level));
-$('next').onclick = () => startLevel(S.level + 1);
+$('next').onclick = () => (inCoop() ? startCoop(S.level + 1) : startLevel(S.level + 1));
 $('menu').onclick = showSelect;
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 

@@ -1,9 +1,14 @@
-const CACHE = 'sneaky-v2';
+const CACHE = 'sneaky-v3';
 const FILES = [
  "./",
  "index.html",
  "game.js",
  "peerjs.min.js",
+ "assets/levels/coop/coop1.json",
+ "assets/levels/coop/coop2.json",
+ "assets/levels/coop/coop3.json",
+ "assets/levels/coop/coop4.json",
+ "assets/levels/coop/coop5.json",
  "manifest.webmanifest",
  "icon.png",
  "icon-192.png",
