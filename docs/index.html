@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#0a0d14">
+<meta name="description" content="Sneaky: a stealth game. Sneak past the guards, solo or in online co-op.">
+<meta property="og:title" content="Sneaky">
+<meta property="og:description" content="Sneak past the guards, solo or in online co-op.">
+<meta property="og:image" content="https://ckopp22.github.io/Sneaky/icon-512.png">
+<meta property="og:type" content="website">
 <title>Sneaky</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.png">
@@ -61,6 +66,7 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 #mainmenu img { width: 420px; max-width: 90%; image-rendering: pixelated; }
 .menubtns { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
 .menubtns .btn { width: 220px; }
+.overlay .hint { margin: 0; text-align: center; color: var(--dim); line-height: 1.5; }
 .overlay h2 { font-size: 28px; margin: 0 0 4px; font-weight: 400; text-align: center; }
 #cgrid.watch { pointer-events: none; }
 #lobby { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
@@ -136,6 +142,8 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 <div id="settings" class="overlay" hidden>
   <div class="panel">
     <h2>Settings</h2>
+    <p class="hint">Move: WASD / arrows, or touch and drag.<br>Esc or the pause button pauses.</p>
+    <button class="btn success" id="share">Share Game</button>
     <button class="btn secondary" id="reset">Reset Progress</button>
     <button class="btn primary" id="sclose">Close</button>
   </div>

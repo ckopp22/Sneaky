@@ -258,6 +258,7 @@ async function loadLevel(id, coop = false) {
   S.players.forEach((p) => Object.assign(p, { alpha: 1, dead: false, invuln: 0, respawnT: 0 }));
   S.checkpoint = data.checkpoint ? rect(data.checkpoint.rect) : null;
   S.cpActive = false;
+  S.hint = data.hint ?? ''; S.hintT = 8;
   S.failT = 1.2;
   S.remoteInput = { x: 0, y: 0 };
   S.coopMenu = false;
@@ -367,11 +368,11 @@ const lightMap = document.createElement('canvas'), lctx = lightMap.getContext('2
 const tinted = document.createElement('canvas');
 
 function resize() {
-  const dpr = window.devicePixelRatio || 1, W = window.innerWidth, H = window.innerHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), W = window.innerWidth, H = window.innerHeight;
   const scale = Math.min(W / C.VIEW_W, H / C.VIEW_H);
   Object.assign(S.view, { w: W / scale, h: H / scale, scale, dpr });
-  canvas.width = lightMap.width = Math.round(W * dpr);
-  canvas.height = lightMap.height = Math.round(H * dpr);
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  lightMap.width = Math.round(W * dpr / 2); lightMap.height = Math.round(H * dpr / 2);
   if (S.map.w) followCamera();
 }
 
@@ -461,7 +462,9 @@ function drawWorld() {
     ctx.strokeRect(cp.x, cp.y, cp.w, cp.h); ctx.setLineDash([]);
   }
   drawMechanics();
-  S.visions.forEach(drawVision);
+  for (const v of S.visions) {
+    if (Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) drawVision(v);
+  }
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
     ctx.globalAlpha = p.alpha;
@@ -470,7 +473,7 @@ function drawWorld() {
   }
   ctx.restore();
   // ambient darkness with a glow around the player
-  lctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+  lctx.setTransform(dpr * scale / 2, 0, 0, dpr * scale / 2, 0, 0);
   lctx.globalCompositeOperation = 'source-over';
   lctx.fillStyle = C.AMBIENT; lctx.fillRect(0, 0, w, h);
   lctx.globalCompositeOperation = 'lighter';
@@ -479,13 +482,19 @@ function drawWorld() {
   lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'multiply';
-  ctx.drawImage(lightMap, 0, 0);
+  ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   ctx.drawImage(IMG.vignette, 0, 0, w, h);
   if (me().dead && S.mode === 'playing') {
     ctx.fillStyle = 'rgba(232,238,250,0.9)'; ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(S.cpActive ? 'You were spotted. It\u2019s up to your partner to finish the level.' : 'You were spotted. Get your partner to the checkpoint!', w / 2, h - 24);
+  }
+  if (S.hint && S.hintT > 0 && S.mode === 'playing') {
+    ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
+    const tw = ctx.measureText(S.hint).width + 32;
+    ctx.fillStyle = 'rgba(10,13,20,0.75)'; ctx.fillRect(w / 2 - tw / 2, h - 86, tw, 34);
+    ctx.fillStyle = '#e8eefa'; ctx.fillText(S.hint, w / 2, h - 64);
   }
   drawJoystick();
 }
@@ -633,6 +642,15 @@ $('selback').onclick = showMenu;
 $('settingsbtn').onclick = () => { show($('settings'), true); };
 const closeSettings = () => { show($('settings'), false); $('reset').textContent = 'Reset Progress'; };
 $('sclose').onclick = closeSettings;
+$('share').onclick = async () => {
+  const url = location.href.split('#')[0];
+  try {
+    if (navigator.share) { await navigator.share({ title: 'Sneaky', text: 'Sneak past the guards!', url }); return; }
+    await navigator.clipboard.writeText(url);
+    $('share').textContent = 'Link copied!';
+    setTimeout(() => { $('share').textContent = 'Share Game'; }, 1500);
+  } catch { /* cancelled */ }
+};
 $('reset').onclick = () => {
   if ($('reset').textContent === 'Reset Progress') { $('reset').textContent = 'Tap again to confirm'; return; }
   store.set({ highest: 0, coopHighest: 0 });
@@ -846,6 +864,7 @@ function frame(now) {
   last = now;
   if (S.mode === 'playing') {
     acc += dt;
+    S.hintT -= dt;
     while (acc >= C.STEP && S.mode === 'playing') { (net.role === 'guest' ? guestStep : step)(C.STEP); acc -= C.STEP; }
     netTick(dt);
   } else {

@@ -119,5 +119,6 @@
    "fov": 40,
    "range": 128
   }
- ]
+ ],
+ "hint": "Sweeping lights spot you too. Watch their timing."
 }

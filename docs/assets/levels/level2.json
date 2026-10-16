@@ -108,5 +108,6 @@
    "pause": 1.5
   }
  ],
- "lights": []
+ "lights": [],
+ "hint": "Guards turn and look around when they pause. Time your moves."
 }

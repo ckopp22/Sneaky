@@ -80,5 +80,6 @@
    "pause": 1.5
   }
  ],
- "lights": []
+ "lights": [],
+ "hint": "Move with WASD / arrows, or touch and drag. Reach the green zone without being seen."
 }

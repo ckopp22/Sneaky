@@ -213,5 +213,6 @@
    "fov": 40,
    "range": 130
   }
- ]
+ ],
+ "hint": "Round switches open matching doors for good. Plates only work while held."
 }

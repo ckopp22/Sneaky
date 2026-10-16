@@ -112,5 +112,6 @@
    "pause": 1.0
   }
  ],
- "lights": []
+ "lights": [],
+ "hint": "Walls block a guard's view. Use them to break line of sight."
 }

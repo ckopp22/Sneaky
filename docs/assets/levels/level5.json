@@ -157,5 +157,6 @@
    "fov": 40,
    "range": 150
   }
- ]
+ ],
+ "hint": "Blinking lights only watch while they are on."
 }
