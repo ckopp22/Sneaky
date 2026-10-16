@@ -40,13 +40,16 @@ const audio = (() => {
   const a = { music: saved.music !== false, sfx: saved.sfx !== false, track: 0, started: false, rolling: false };
   const tracks = [1, 2, 3].map((n) => make(`music${n}`, 0.4));
   const alert = make('alert', 0.63), win = make('win', 0.8), roll = make('rolling', 0.4, true);
+  const level = () => (a.ducked ? 0.15 : 0.4);
   const playTrack = () => {
     const t = tracks[a.track];
+    t.volume = level();
     t.currentTime = 0;
     t.onended = () => { a.track = (a.track + 1) % tracks.length; playTrack(); };
     if (a.music) t.play().catch(() => { a.started = false; });
   };
   a.start = () => { if (!a.started) { a.started = true; playTrack(); } };
+  a.duck = (on) => { a.ducked = on; tracks[a.track].volume = level(); };
   a.setMusic = (on) => {
     a.music = on; store.set({ music: on });
     if (on && a.started) tracks[a.track].play().catch(() => {}); else tracks[a.track].pause();
@@ -391,6 +394,7 @@ function buildSelect() {
 
 function showSelect() {
   S.mode = 'select';
+  audio.duck(false);
   audio.setRolling(false);
   show($('popup'), false); show($('pause'), false); show($('game'), false);
   buildSelect();
@@ -407,12 +411,14 @@ function pauseGame() {
   if (S.mode !== 'playing') return;
   S.mode = 'paused';
   audio.setRolling(false);
+  audio.duck(true);
   showPopup('Paused', { resume: true });
 }
 
 function resumeGame() {
   if (S.mode !== 'paused') return;
   S.mode = 'playing';
+  audio.duck(false);
   show($('popup'), false);
 }
 
