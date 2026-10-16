@@ -3,7 +3,7 @@
 const C = {
   VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 20, COOP_LEVEL_COUNT: 10, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown'], STEP: 1 / 60,
-  PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 44, JOY_DEAD: 0.15, JOY_SCALE: 2,
+  PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_ACCEL: 60,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
@@ -531,9 +531,10 @@ function drawJoystick() {
   const j = S.joy;
   if (j.id === -1) return;
   ctx.imageSmoothingEnabled = false;
-  for (const [img, x, y] of [[IMG.base, j.ox, j.oy], [IMG.knob, j.ox + j.kx, j.oy + j.ky]]) {
-    const w = img.width * C.JOY_SCALE, h = img.height * C.JOY_SCALE;
-    ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+  const k = S.view.scale;
+  for (const [img, x, y, r] of [[IMG.base, j.ox, j.oy, C.JOY_R], [IMG.knob, j.ox + j.kx / k, j.oy + j.ky / k, C.JOY_KNOB_R]]) {
+    const d = r * 2 / k;
+    ctx.drawImage(img, x - d / 2, y - d / 2, d, d);
   }
   ctx.imageSmoothingEnabled = true;
 }
@@ -639,7 +640,7 @@ for (const t of ['blur', 'focus', 'pagehide', 'pageshow']) window.addEventListen
 
 function joyMove(e) {
   const j = S.joy, k = S.view.scale;
-  let dx = e.clientX / k - j.ox, dy = e.clientY / k - j.oy;
+  let dx = e.clientX - j.ox * k, dy = e.clientY - j.oy * k;
   const len = Math.hypot(dx, dy);
   if (len > C.JOY_R) { dx = dx / len * C.JOY_R; dy = dy / len * C.JOY_R; }
   j.kx = dx; j.ky = dy;
