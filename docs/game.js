@@ -7,10 +7,10 @@ const C = {
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
-  ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
+  ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(217,230,255,0.16)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
-  LAMP_ON: '#ffe666', LAMP_OFF: '#665c29', AMBIENT: 'rgb(107,117,153)', PLAYER_LIGHT: [204, 230, 255],
+  LAMP_ON: '#ffe666', LAMP_OFF: '#665c29', AMBIENT: 'rgb(4,5,9)', PLAYER_LIGHT: [204, 230, 255],
 };
 const TAU = Math.PI * 2;
 const rad = (d) => d * Math.PI / 180;
@@ -450,9 +450,8 @@ function updateMechanics() {
 }
 
 function followCamera() {
-  const { w, h } = S.view, { w: mw, h: mh } = S.map, p = camTarget();
-  S.cam.x = mw > w ? Math.min(Math.max(p.x, w / 2), mw - w / 2) : mw / 2;
-  S.cam.y = mh > h ? Math.min(Math.max(p.y, h / 2), mh - h / 2) : mh / 2;
+  const p = camTarget();
+  S.cam.x = p.x; S.cam.y = p.y;
 }
 
 function inputVector() {
@@ -688,6 +687,7 @@ function drawWorld() {
   lctx.globalCompositeOperation = 'lighter';
   const lr = 64 * C.PLAYER_LIGHT_SCALE;
   const lp = camTarget();
+  lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'multiply';
