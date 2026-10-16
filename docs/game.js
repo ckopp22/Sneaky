@@ -1,7 +1,7 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 12, COOP_LEVEL_COUNT: 10, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 20, COOP_LEVEL_COUNT: 10, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 44, JOY_DEAD: 0.15, JOY_SCALE: 2,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70,
@@ -137,11 +137,12 @@ function makeVision(x, y, fov, range, cone) {
 }
 
 function makeGuard(d, tile) {
-  const path = d.path.map((p) => ({ x: (p[0] + 0.5) * tile, y: (p[1] + 0.5) * tile }));
+  const wander = !!d.wander;
+  const path = (d.wander ?? d.path).map((p) => ({ x: (p[0] + 0.5) * tile, y: (p[1] + 0.5) * tile }));
   const g = makeVision(path[0].x, path[0].y, d.fov ?? C.GUARD_FOV, d.range ?? C.GUARD_RANGE, C.VISION);
   Object.assign(g, { kind: 'guard', path, speed: d.speed ?? C.GUARD_SPEED, pause: d.pause ?? C.GUARD_PAUSE,
-    erratic: d.erratic ?? 0, next: 1, dir: 1, pauseLeft: 0, pauseTotal: 1, lookBase: 0, mult: 1, multLeft: 0 });
-  if (path.length > 1) g.ang = Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x);
+    erratic: d.erratic ?? 0, wander, cur: 0, last: -1, target: -1, next: 1, dir: 1, pauseLeft: 0, pauseTotal: 1, lookBase: 0, mult: 1, multLeft: 0 });
+  if (!wander && path.length > 1) g.ang = Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x);
   return g;
 }
 
@@ -162,6 +163,20 @@ function startPause(g, duration) {
   g.pauseTotal = duration; g.pauseLeft = duration; g.lookBase = g.ang;
 }
 
+function clearLine(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+  return [-8, 0, 8].every((o) => !raycast(a.x + nx * o, a.y + ny * o, b.x + nx * o, b.y + ny * o));
+}
+
+function pickWaypoint(g) {
+  const here = g.path[g.cur];
+  const all = g.path.map((_, i) => i).filter((i) => i !== g.cur);
+  const seen = all.filter((i) => clearLine(here, g.path[i]));
+  const fresh = seen.filter((i) => i !== g.last);
+  const pool = fresh.length ? fresh : seen.length ? seen : all;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 function patrol(g, dt) {
   if (g.path.length < 2) return;
   if (g.pauseLeft > 0) {
@@ -178,13 +193,18 @@ function patrol(g, dt) {
       if (Math.random() < 0.2 * e) { startPause(g, rand(0.4, 0.9)); return; }
     }
   }
-  const goal = g.path[g.next], dx = goal.x - g.x, dy = goal.y - g.y, dist = Math.hypot(dx, dy);
+  if (g.wander && g.target < 0) g.target = pickWaypoint(g);
+  const goal = g.path[g.wander ? g.target : g.next], dx = goal.x - g.x, dy = goal.y - g.y, dist = Math.hypot(dx, dy);
   const step = g.speed * g.mult * dt;
   if (dist <= step) {
     g.x = goal.x; g.y = goal.y;
-    if (g.next + g.dir < 0 || g.next + g.dir >= g.path.length) g.dir = -g.dir;
-    g.next += g.dir;
-    startPause(g, g.pause * rand(1 - 0.4 * e, 1 + 0.6 * e));
+    if (g.wander) {
+      g.last = g.cur; g.cur = g.target; g.target = -1;
+    } else {
+      if (g.next + g.dir < 0 || g.next + g.dir >= g.path.length) g.dir = -g.dir;
+      g.next += g.dir;
+    }
+    startPause(g, g.pause * (g.wander ? rand(0.3, 1.7) : 1) * rand(1 - 0.4 * e, 1 + 0.6 * e));
     return;
   }
   g.ang = Math.atan2(dy, dx);
