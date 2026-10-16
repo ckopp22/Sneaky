@@ -1,7 +1,7 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 12, COOP_LEVEL_COUNT: 5, STEP: 1 / 60,
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 12, COOP_LEVEL_COUNT: 5, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 44, JOY_DEAD: 0.15, JOY_SCALE: 2,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
@@ -332,12 +332,14 @@ function finishLevel(won) {
   if (won) {
     audio.playWin();
     if (!inCoop() && S.level > (store.get().highest ?? 0)) store.set({ highest: S.level });
+    if (inCoop() && net.role === 'host' && S.level > (store.get().coopHighest ?? 0)) store.set({ coopHighest: S.level });
   } else {
     audio.playAlert();
   }
   const coop = inCoop();
   showPopup(won ? 'Level Complete!' : 'Bummer... try again?',
-    { resume: false, retry: !won && (!coop || net.role === 'host'), next: won && S.level < (coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT) && (!coop || net.role === 'host') });
+    { resume: false, retry: !won && (!coop || net.role === 'host'), next: won && S.level < (coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT) && (!coop || net.role === 'host'),
+      pick: coop && net.role === 'host' });
 }
 
 // ---------- rendering ----------
@@ -452,7 +454,7 @@ function show(el, on) { el.hidden = !on; }
 
 function showPopup(title, buttons) {
   $('ptitle').textContent = title;
-  for (const id of ['resume', 'retry', 'next']) show($(id), !!buttons[id]);
+  for (const id of ['resume', 'retry', 'next', 'pick']) show($(id), !!buttons[id]);
   $('menu').textContent = inCoop() || net.role ? 'Leave' : 'Levels';
   show($('popup'), true);
 }
@@ -488,7 +490,7 @@ function showSelect() {
   S.coopMenu = false;
   audio.duck(false);
   audio.setRolling(false);
-  show($('popup'), false); show($('pause'), false); show($('game'), false); show($('lobby'), false);
+  show($('popup'), false); show($('pause'), false); show($('game'), false); show($('lobby'), false); show($('coopsel'), false);
   buildSelect();
   show($('select'), true);
 }
@@ -503,7 +505,7 @@ async function startLevel(id) {
 
 function pauseGame() {
   if (S.mode !== 'playing' || S.coopMenu) return;
-  if (inCoop()) { S.coopMenu = true; showPopup('Co-op game', { resume: true }); return; }
+  if (inCoop()) { S.coopMenu = true; showPopup('Co-op game', { resume: true, pick: net.role === 'host' }); return; }
   S.mode = 'paused';
   audio.setRolling(false);
   audio.duck(true);
@@ -588,7 +590,7 @@ function wire(conn) {
 function showLobby() {
   netClose();
   S.mode = 'lobby';
-  show($('select'), false);
+  show($('select'), false); show($('coopsel'), false);
   $('code').textContent = '';
   lobbyStatus('Host a game, or enter a friend’s code to join.');
   show($('lobby'), true);
@@ -607,7 +609,7 @@ function hostGame() {
     if (net.conn) { conn.close(); return; }
     net.conn = conn;
     wire(conn);
-    if (conn.open) startCoop(1); else conn.on('open', () => startCoop(1));
+    if (conn.open) showCoopPicker(); else conn.on('open', showCoopPicker);
   });
 }
 
@@ -642,14 +644,42 @@ async function guestStart(level) {
 }
 
 function enterGame() {
-  show($('select'), false); show($('lobby'), false); show($('popup'), false); show($('game'), true); show($('pause'), true);
+  show($('select'), false); show($('lobby'), false); show($('coopsel'), false); show($('popup'), false); show($('game'), true); show($('pause'), true);
   S.mode = 'playing';
+}
+
+function showCoopPicker(highest) {
+  const host = net.role === 'host';
+  if (host) { highest = store.get().coopHighest ?? 0; netSend({ t: 'picker', highest }); }
+  S.mode = 'picker'; S.coopMenu = false;
+  audio.setRolling(false); audio.duck(false);
+  for (const id of ['select', 'lobby', 'popup', 'pause', 'game']) show($(id), false);
+  $('cstatus').textContent = host ? 'Choose a Level' : 'Host is choosing a level...';
+  const grid = $('cgrid');
+  grid.className = host ? '' : 'watch';
+  grid.textContent = '';
+  for (let id = 1; id <= C.COOP_LEVEL_COUNT; id++) {
+    const b = document.createElement('button');
+    b.className = 'btn level' + (id <= highest ? ' done' : '');
+    if (id <= highest + 1) {
+      b.textContent = `${id}\n${C.COOP_NAMES[id - 1]}`;
+      b.onclick = () => startCoop(id);
+    } else {
+      b.textContent = `${id}\n`; b.disabled = true;
+      const lock = document.createElement('img');
+      lock.src = 'assets/ui/icons/icon_lock.png';
+      b.appendChild(lock);
+    }
+    grid.appendChild(b);
+  }
+  show($('coopsel'), true);
 }
 
 function onNetData(m) {
   if (!m || typeof m !== 'object') return;
   if (net.role === 'guest') {
-    if (m.t === 'start') guestStart(m.level);
+    if (m.t === 'picker') showCoopPicker(Number(m.highest) || 0);
+    else if (m.t === 'start') guestStart(m.level);
     else if (m.t === 's' && S.mode === 'playing') applySnapshot(m);
     else if (m.t === 'end') finishLevel(!!m.won);
   } else if (m.t === 'i') {
@@ -662,6 +692,7 @@ function onPartnerLeft() {
   if (net.role === null) return;
   if (S.mode === 'lobby') { netClose(); lobbyStatus('Partner left.'); return; }
   if (S.mode === 'select') return;
+  if (S.mode === 'picker') { showLobby(); lobbyStatus('Partner left.'); return; }
   S.mode = 'failed';
   S.coopMenu = false;
   audio.setRolling(false);
@@ -730,6 +761,8 @@ $('coop').onclick = showLobby;
 $('host').onclick = hostGame;
 $('join').onclick = joinGame;
 $('lobbyback').onclick = showSelect;
+$('cleave').onclick = showSelect;
+$('pick').onclick = () => showCoopPicker();
 
 // ---------- main loop ----------
 let last = 0, acc = 0;
