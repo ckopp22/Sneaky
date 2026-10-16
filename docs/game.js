@@ -5,7 +5,7 @@ const C = {
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 44, JOY_DEAD: 0.15, JOY_SCALE: 2,
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
-  BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', GUARD: '#e64d4d',
+  BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(217,230,255,0.16)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
   LAMP_ON: '#ffe666', LAMP_OFF: '#665c29', AMBIENT: 'rgb(107,117,153)', PLAYER_LIGHT: [204, 230, 255],
 };
@@ -70,7 +70,7 @@ const audio = (() => {
 // ---------- state ----------
 const S = {
   mode: 'loading', level: 1, names: [], walls: [], goal: null, map: { w: 0, h: 0 },
-  player: { x: 0, y: 0 }, visions: [], keys: new Set(), joy: { id: -1, ox: 0, oy: 0, kx: 0, ky: 0, vx: 0, vy: 0 },
+  players: [{ x: 0, y: 0 }], me: 0, remoteInput: { x: 0, y: 0 }, coopMenu: false, visions: [], keys: new Set(), joy: { id: -1, ox: 0, oy: 0, kx: 0, ky: 0, vx: 0, vy: 0 },
   cam: { x: 0, y: 0 }, view: { w: C.VIEW_W, h: C.VIEW_H, scale: 1, dpr: 1 },
 };
 
@@ -213,29 +213,35 @@ function updateVision(v, dt) {
   if (v.kind === 'guard') patrol(v, dt); else sweepLight(v, dt);
   if (!v.active) { v.poly = []; v.seen = 0; return false; }
   updatePoly(v);
-  v.seen = canSee(v, S.player) ? v.seen + dt : 0;
+  v.seen = S.players.some((p) => canSee(v, p)) ? v.seen + dt : 0;
   if (v.seen >= C.GRACE && !v.alerted) { v.alerted = true; return true; }
   return false;
 }
 
 // ---------- level ----------
-async function loadLevel(id) {
+async function loadLevel(id, coop = false) {
   const data = await (await fetch(`assets/levels/level${id}.json`)).json();
   const tile = data.tileSize ?? 32, rect = (a) => ({ x: a[0] * tile, y: a[1] * tile, w: a[2] * tile, h: a[3] * tile });
   S.level = id;
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
   S.walls = data.walls.map(rect);
   S.goal = rect(data.goal.rect);
-  S.player = { x: (data.playerStart[0] + 0.5) * tile, y: (data.playerStart[1] + 0.5) * tile };
+  const sx = (data.playerStart[0] + 0.5) * tile, sy = (data.playerStart[1] + 0.5) * tile;
+  S.players = coop ? [{ x: sx, y: sy - 11, color: C.PLAYER }, { x: sx, y: sy + 11, color: C.PLAYER2 }]
+    : [{ x: sx, y: sy, color: C.PLAYER }];
+  S.remoteInput = { x: 0, y: 0 };
+  S.coopMenu = false;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
   followCamera();
 }
 
+const me = () => S.players[S.me];
+
 function followCamera() {
-  const { w, h } = S.view, { w: mw, h: mh } = S.map;
-  S.cam.x = mw > w ? Math.min(Math.max(S.player.x, w / 2), mw - w / 2) : mw / 2;
-  S.cam.y = mh > h ? Math.min(Math.max(S.player.y, h / 2), mh - h / 2) : mh / 2;
+  const { w, h } = S.view, { w: mw, h: mh } = S.map, p = me();
+  S.cam.x = mw > w ? Math.min(Math.max(p.x, w / 2), mw - w / 2) : mw / 2;
+  S.cam.y = mh > h ? Math.min(Math.max(p.y, h / 2), mh - h / 2) : mh / 2;
 }
 
 function inputVector() {
@@ -247,29 +253,42 @@ function inputVector() {
   return len > 1 ? { x: v.x / len, y: v.y / len } : v;
 }
 
-function step(dt) {
-  const p = S.player, dir = inputVector();
+function movePlayer(p, dir, dt) {
   p.x += dir.x * C.PLAYER_SPEED * dt; p.y += dir.y * C.PLAYER_SPEED * dt;
   for (let i = 0; i < 3; i++) for (const w of S.walls) pushOut(p, w);
-  audio.setRolling(dir.x !== 0 || dir.y !== 0);
+}
+
+function step(dt) {
+  S.players.forEach((p, i) => {
+    const dir = i === S.me ? inputVector() : S.remoteInput;
+    movePlayer(p, dir, dt);
+    if (i === S.me) audio.setRolling(dir.x !== 0 || dir.y !== 0);
+  });
   followCamera();
-  if (touchesRect(p, S.goal)) return endLevel(true);
+  if (S.players.every((p) => touchesRect(p, S.goal))) return endLevel(true);
   let spotted = false;
   for (const v of S.visions) spotted = updateVision(v, dt) || spotted;
   if (spotted) endLevel(false);
 }
 
 function endLevel(won) {
+  if (inCoop()) netSend({ t: 'end', won });
+  finishLevel(won);
+}
+
+function finishLevel(won) {
   S.mode = won ? 'won' : 'failed';
+  S.coopMenu = false;
   audio.setRolling(false);
   if (won) {
     audio.playWin();
-    if (S.level > (store.get().highest ?? 0)) store.set({ highest: S.level });
+    if (!inCoop() && S.level > (store.get().highest ?? 0)) store.set({ highest: S.level });
   } else {
     audio.playAlert();
   }
+  const coop = inCoop();
   showPopup(won ? 'Level Complete!' : 'Bummer... try again?',
-    { resume: false, retry: !won, next: won && S.level < C.LEVEL_COUNT });
+    { resume: false, retry: !won && (!coop || net.role === 'host'), next: !coop && won && S.level < C.LEVEL_COUNT });
 }
 
 // ---------- rendering ----------
@@ -332,7 +351,9 @@ function drawWorld() {
   ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
   ctx.fillStyle = C.GOAL; ctx.fillRect(g.x, g.y, g.w, g.h);
   S.visions.forEach(drawVision);
-  ctx.fillStyle = C.PLAYER; ctx.beginPath(); ctx.arc(S.player.x, S.player.y, C.PLAYER_R, 0, TAU); ctx.fill();
+  for (const p of S.players) {
+    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
+  }
   ctx.restore();
   // ambient darkness with a glow around the player
   lctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
@@ -340,7 +361,7 @@ function drawWorld() {
   lctx.fillStyle = C.AMBIENT; lctx.fillRect(0, 0, w, h);
   lctx.globalCompositeOperation = 'lighter';
   const lr = 64 * C.PLAYER_LIGHT_SCALE;
-  lctx.drawImage(tinted, S.player.x + ox - lr, S.player.y + oy - lr, lr * 2, lr * 2);
+  lctx.drawImage(tinted, me().x + ox - lr, me().y + oy - lr, lr * 2, lr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'multiply';
   ctx.drawImage(lightMap, 0, 0);
@@ -367,6 +388,7 @@ function show(el, on) { el.hidden = !on; }
 function showPopup(title, buttons) {
   $('ptitle').textContent = title;
   for (const id of ['resume', 'retry', 'next']) show($(id), !!buttons[id]);
+  $('menu').textContent = inCoop() || net.role ? 'Leave' : 'Levels';
   show($('popup'), true);
 }
 
@@ -396,22 +418,27 @@ function buildSelect() {
 }
 
 function showSelect() {
+  netClose();
   S.mode = 'select';
+  S.coopMenu = false;
   audio.duck(false);
   audio.setRolling(false);
-  show($('popup'), false); show($('pause'), false); show($('game'), false);
+  show($('popup'), false); show($('pause'), false); show($('game'), false); show($('lobby'), false);
   buildSelect();
   show($('select'), true);
 }
 
 async function startLevel(id) {
+  netClose();
   await loadLevel(id);
+  S.me = 0;
   show($('select'), false); show($('popup'), false); show($('game'), true); show($('pause'), true);
   S.mode = 'playing';
 }
 
 function pauseGame() {
-  if (S.mode !== 'playing') return;
+  if (S.mode !== 'playing' || S.coopMenu) return;
+  if (inCoop()) { S.coopMenu = true; showPopup('Co-op game', { resume: true }); return; }
   S.mode = 'paused';
   audio.setRolling(false);
   audio.duck(true);
@@ -419,6 +446,7 @@ function pauseGame() {
 }
 
 function resumeGame() {
+  if (S.coopMenu) { S.coopMenu = false; show($('popup'), false); return; }
   if (S.mode !== 'paused') return;
   S.mode = 'playing';
   audio.duck(false);
@@ -429,12 +457,12 @@ function resumeGame() {
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', (e) => {
   audio.start();
-  if (e.code === 'Escape') { if (S.mode === 'playing') pauseGame(); else resumeGame(); return; }
+  if (e.code === 'Escape') { if (S.mode === 'playing' && !S.coopMenu) pauseGame(); else resumeGame(); return; }
   if (GAME_KEYS.has(e.code)) { S.keys.add(e.code); e.preventDefault(); }
 });
 window.addEventListener('keyup', (e) => S.keys.delete(e.code));
-window.addEventListener('blur', () => { S.keys.clear(); pauseGame(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+window.addEventListener('blur', () => { S.keys.clear(); if (!inCoop()) pauseGame(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && !inCoop()) pauseGame(); });
 window.addEventListener('pointerdown', () => audio.start());
 window.addEventListener('resize', resize);
 
@@ -463,10 +491,171 @@ $('sfx').onclick = () => { audio.setSfx(!audio.sfx); refreshToggles(); };
 $('music').onclick = () => { audio.setMusic(!audio.music); refreshToggles(); };
 $('pause').onclick = pauseGame;
 $('resume').onclick = resumeGame;
-$('retry').onclick = () => startLevel(S.level);
+$('retry').onclick = () => (inCoop() ? startCoop(S.level) : startLevel(S.level));
 $('next').onclick = () => startLevel(S.level + 1);
 $('menu').onclick = showSelect;
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+
+// ---------- co-op (PeerJS, host-authoritative) ----------
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const net = { role: null, peer: null, conn: null, sendT: 0, inputT: 0 };
+const inCoop = () => net.role !== null && S.players.length === 2;
+const lobbyStatus = (text) => { $('lobbystatus').textContent = text; };
+
+function netSend(msg) { if (net.conn && net.conn.open) net.conn.send(msg); }
+
+function netClose() {
+  try { if (net.conn) net.conn.close(); if (net.peer) net.peer.destroy(); } catch { /* ignore */ }
+  Object.assign(net, { role: null, peer: null, conn: null, sendT: 0, inputT: 0 });
+}
+
+function wire(conn) {
+  conn.on('data', onNetData);
+  conn.on('close', onPartnerLeft);
+  conn.on('error', onPartnerLeft);
+}
+
+function showLobby() {
+  netClose();
+  S.mode = 'lobby';
+  show($('select'), false);
+  $('code').textContent = '';
+  lobbyStatus('Host a game, or enter a friend’s code to join.');
+  show($('lobby'), true);
+}
+
+function hostGame() {
+  if (typeof Peer === 'undefined') return lobbyStatus('Co-op needs an internet connection.');
+  netClose();
+  net.role = 'host';
+  const code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+  const peer = net.peer = new Peer('sneaky-' + code);
+  lobbyStatus('Creating room...');
+  peer.on('open', () => { $('code').textContent = code; lobbyStatus('Share this code. Waiting for player 2...'); });
+  peer.on('error', (e) => { if (e.type === 'unavailable-id') hostGame(); else lobbyStatus('Connection error: ' + e.type); });
+  peer.on('connection', (conn) => {
+    if (net.conn) { conn.close(); return; }
+    net.conn = conn;
+    wire(conn);
+    if (conn.open) startCoop(1); else conn.on('open', () => startCoop(1));
+  });
+}
+
+function joinGame() {
+  if (typeof Peer === 'undefined') return lobbyStatus('Co-op needs an internet connection.');
+  const code = $('codeinput').value.trim().toUpperCase();
+  if (code.length !== 4) return lobbyStatus('Enter the 4-letter room code.');
+  netClose();
+  net.role = 'guest';
+  $('code').textContent = '';
+  lobbyStatus('Connecting...');
+  const peer = net.peer = new Peer();
+  peer.on('open', () => {
+    const conn = net.conn = peer.connect('sneaky-' + code, { reliable: true });
+    wire(conn);
+    conn.on('open', () => lobbyStatus('Connected. Waiting for host...'));
+  });
+  peer.on('error', (e) => lobbyStatus(e.type === 'peer-unavailable' ? 'Room not found.' : 'Connection error: ' + e.type));
+}
+
+async function startCoop(level) {
+  await loadLevel(level, true);
+  S.me = 0;
+  enterGame();
+  netSend({ t: 'start', level });
+}
+
+async function guestStart(level) {
+  await loadLevel(level, true);
+  S.me = 1;
+  enterGame();
+}
+
+function enterGame() {
+  show($('select'), false); show($('lobby'), false); show($('popup'), false); show($('game'), true); show($('pause'), true);
+  S.mode = 'playing';
+}
+
+function onNetData(m) {
+  if (!m || typeof m !== 'object') return;
+  if (net.role === 'guest') {
+    if (m.t === 'start') guestStart(m.level);
+    else if (m.t === 's' && S.mode === 'playing') applySnapshot(m);
+    else if (m.t === 'end') finishLevel(!!m.won);
+  } else if (m.t === 'i') {
+    const x = Number(m.x) || 0, y = Number(m.y) || 0, len = Math.hypot(x, y);
+    S.remoteInput = len > 1 ? { x: x / len, y: y / len } : { x, y };
+  }
+}
+
+function onPartnerLeft() {
+  if (net.role === null) return;
+  if (S.mode === 'lobby') { netClose(); lobbyStatus('Partner left.'); return; }
+  if (S.mode === 'select') return;
+  S.mode = 'failed';
+  S.coopMenu = false;
+  audio.setRolling(false);
+  showPopup('Partner left', {});
+}
+
+function snapshot() {
+  const r = (n) => Math.round(n * 10) / 10;
+  return { t: 's', p: S.players.map((p) => [r(p.x), r(p.y)]),
+    v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0]) };
+}
+
+function applySnapshot(m) {
+  m.p.forEach(([x, y], i) => {
+    const q = S.players[i];
+    if (!q) return;
+    if (i === S.me) {
+      const ex = x - q.x, ey = y - q.y;
+      if (Math.hypot(ex, ey) > 40) { q.x = x; q.y = y; } else { q.x += ex * 0.2; q.y += ey * 0.2; }
+    } else {
+      if (q.tx === undefined) { q.x = x; q.y = y; }
+      q.tx = x; q.ty = y;
+    }
+  });
+  m.v.forEach(([x, y, ang, active, seen], i) => {
+    const v = S.visions[i];
+    if (!v) return;
+    if (v.tx === undefined) { v.x = x; v.y = y; v.ang = ang; }
+    Object.assign(v, { tx: x, ty: y, tang: ang, active: !!active, seen: seen ? 1 : 0 });
+  });
+}
+
+function guestStep(dt) {
+  const dir = inputVector(), k = 1 - Math.exp(-dt * 20);
+  movePlayer(me(), dir, dt);
+  audio.setRolling(dir.x !== 0 || dir.y !== 0);
+  S.players.forEach((q, i) => {
+    if (i !== S.me && q.tx !== undefined) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; }
+  });
+  for (const v of S.visions) {
+    if (v.tx !== undefined) {
+      v.x += (v.tx - v.x) * k; v.y += (v.ty - v.y) * k; v.ang += angleDiff(v.ang, v.tang) * k;
+    }
+    if (v.active) updatePoly(v); else v.poly = [];
+  }
+  followCamera();
+}
+
+function netTick(dt) {
+  if (!inCoop() || !net.conn || !net.conn.open) return;
+  if (net.role === 'host') {
+    net.sendT += dt;
+    if (net.sendT >= 0.05) { net.sendT = 0; netSend(snapshot()); }
+  } else {
+    net.inputT += dt;
+    if (net.inputT >= 1 / 30) { net.inputT = 0; const v = inputVector(); netSend({ t: 'i', x: v.x, y: v.y }); }
+  }
+}
+
+$('coop').onclick = showLobby;
+$('host').onclick = hostGame;
+$('join').onclick = joinGame;
+$('lobbyback').onclick = showSelect;
 
 // ---------- main loop ----------
 let last = 0, acc = 0;
@@ -475,7 +664,8 @@ function frame(now) {
   last = now;
   if (S.mode === 'playing') {
     acc += dt;
-    while (acc >= C.STEP && S.mode === 'playing') { step(C.STEP); acc -= C.STEP; }
+    while (acc >= C.STEP && S.mode === 'playing') { (net.role === 'guest' ? guestStep : step)(C.STEP); acc -= C.STEP; }
+    netTick(dt);
   } else {
     acc = 0;
   }

@@ -1,8 +1,9 @@
-const CACHE = 'sneaky-v1';
+const CACHE = 'sneaky-v2';
 const FILES = [
  "./",
  "index.html",
  "game.js",
+ "peerjs.min.js",
  "manifest.webmanifest",
  "icon.png",
  "icon-192.png",
