@@ -9,6 +9,7 @@ var _next: int = 1
 var _step_dir: int = 1
 var _pause_left: float = 0.0
 var _sprite: AnimatedSprite2D
+var _direction: String = "down"
 
 
 func _ready() -> void:
@@ -30,8 +31,8 @@ func setup(data: Dictionary, tile: float) -> void:
 
 
 func _update_state(delta: float) -> void:
-	var direction: String = CharacterSprites.direction_name(facing)
-	_sprite.play(direction if _patrol(delta) else "idle_" + direction)
+	_direction = CharacterSprites.direction_name(facing, _direction)
+	_sprite.play(_direction if _patrol(delta) else "idle_" + _direction)
 
 
 func _patrol(delta: float) -> bool:

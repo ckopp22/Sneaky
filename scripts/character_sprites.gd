@@ -31,8 +31,15 @@ static func create(character: String) -> AnimatedSprite2D:
 	return sprite
 
 
-static func direction_name(vector: Vector2) -> String:
-	if absf(vector.x) > absf(vector.y):
+static func direction_name(vector: Vector2, current: String = "") -> String:
+	var horizontal: bool = absf(vector.x) > absf(vector.y)
+	if current != "":
+		var was_horizontal: bool = current == "left" or current == "right"
+		if was_horizontal:
+			horizontal = absf(vector.x) * Config.TURN_HYSTERESIS > absf(vector.y)
+		else:
+			horizontal = absf(vector.x) > absf(vector.y) * Config.TURN_HYSTERESIS
+	if horizontal:
 		return "right" if vector.x > 0.0 else "left"
 	return "down" if vector.y > 0.0 else "up"
 

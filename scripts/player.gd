@@ -26,17 +26,19 @@ func _ready() -> void:
 	(_shape.shape as CircleShape2D).radius = Config.PLAYER_RADIUS
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var direction: Vector2 = _keyboard_vector()
 	if direction == Vector2.ZERO:
 		direction = joystick_vector
-	velocity = direction * Config.PLAYER_SPEED
+	var rate: float = Config.PLAYER_ACCEL if direction != Vector2.ZERO else Config.PLAYER_FRICTION
+	velocity = velocity.move_toward(direction * Config.PLAYER_SPEED, rate * delta)
 	move_and_slide()
-	if velocity != Vector2.ZERO:
-		_direction = CharacterSprites.direction_name(velocity)
+	if direction != Vector2.ZERO:
+		_direction = CharacterSprites.direction_name(direction, _direction)
 		_sprite.play(_direction)
 	else:
 		_sprite.play("idle_" + _direction)
+	_update_lean(direction, delta)
 
 
 func set_joystick_vector(vector: Vector2) -> void:
@@ -54,3 +56,10 @@ func _is_down(keys: Array[Key]) -> bool:
 		if Input.is_physical_key_pressed(key):
 			return true
 	return false
+
+
+func _update_lean(direction: Vector2, delta: float) -> void:
+	var target: float = 0.0
+	if (_direction == "up" or _direction == "down") and absf(direction.y) > 0.01:
+		target = clampf(direction.x / absf(direction.y), -1.0, 1.0) * Config.LEAN_ANGLE
+	_sprite.rotation = lerp_angle(_sprite.rotation, target, minf(1.0, 12.0 * delta))

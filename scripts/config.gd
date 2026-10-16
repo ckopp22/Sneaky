@@ -3,6 +3,10 @@ class_name Config
 const TILE_SIZE: int = 32
 const PLAYER_SPEED: float = 120.0
 const PLAYER_RADIUS: float = 10.0
+const PLAYER_ACCEL: float = 900.0
+const PLAYER_FRICTION: float = 1100.0
+const TURN_HYSTERESIS: float = 1.4
+const LEAN_ANGLE: float = 0.14
 const JOYSTICK_RADIUS: float = 44.0
 const JOYSTICK_DEADZONE: float = 0.15
 
