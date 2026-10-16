@@ -1,8 +1,8 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/fail_popup.gd" id="1_popup"]
+[ext_resource type="Script" path="res://scripts/result_popup.gd" id="1_popup"]
 
-[node name="FailPopup" type="Control"]
+[node name="ResultPopup" type="Control"]
 process_mode = 3
 visible = false
 layout_mode = 3
@@ -40,7 +40,18 @@ theme_override_font_sizes/font_size = 32
 text = "Bummer... try again?"
 horizontal_alignment = 1
 
-[node name="TryAgain" type="Button" parent="Center/Box"]
+[node name="Retry" type="Button" parent="Center/Box"]
 custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
 text = "Try Again"
+
+[node name="Next" type="Button" parent="Center/Box"]
+visible = false
+custom_minimum_size = Vector2(160, 48)
+layout_mode = 2
+text = "Next Level"
+
+[node name="Menu" type="Button" parent="Center/Box"]
+custom_minimum_size = Vector2(160, 48)
+layout_mode = 2
+text = "Levels"

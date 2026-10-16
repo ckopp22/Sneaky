@@ -5,6 +5,7 @@ signal goal_reached
 signal player_spotted
 
 const GUARD_SCENE: PackedScene = preload("res://scenes/guard.tscn")
+const LIGHT_SCENE: PackedScene = preload("res://scenes/light.tscn")
 
 var map_size: Vector2 = Vector2.ZERO
 var player_start: Vector2 = Vector2.ZERO
@@ -39,6 +40,11 @@ func _build(data: Dictionary) -> void:
 		guard.setup(guard_data, tile)
 		guard.spotted.connect(player_spotted.emit)
 		add_child(guard)
+	for light_data: Dictionary in data.get("lights", []):
+		var light := LIGHT_SCENE.instantiate() as Light
+		light.setup(light_data, tile)
+		light.spotted.connect(player_spotted.emit)
+		add_child(light)
 	queue_redraw()
 
 

@@ -21,5 +21,7 @@ const GUARD_PAUSE: float = 1.0
 const VISION_RAY_STEP_DEG: float = 2.0
 
 const GUARD_COLOR: Color = Color(0.9, 0.3, 0.3)
-const VISION_COLOR: Color = Color(1.0, 0.9, 0.4, 0.22)
+const VISION_COLOR: Color = Color(0.85, 0.9, 1.0, 0.16)
+const LIGHT_COLOR: Color = Color(1.0, 0.85, 0.3, 0.26)
+const LAMP_COLOR: Color = Color(1.0, 0.9, 0.4)
 const ALERT_COLOR: Color = Color(1.0, 0.15, 0.15, 0.4)
