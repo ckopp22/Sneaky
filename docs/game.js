@@ -4,7 +4,7 @@ const C = {
   VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 20, COOP_LEVEL_COUNT: 10, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 44, JOY_DEAD: 0.15, JOY_SCALE: 2,
-  GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70,
+  GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_ACCEL: 60,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(217,230,255,0.16)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -141,7 +141,7 @@ function makeGuard(d, tile) {
   const path = (d.wander ?? d.path).map((p) => ({ x: (p[0] + 0.5) * tile, y: (p[1] + 0.5) * tile }));
   const g = makeVision(path[0].x, path[0].y, d.fov ?? C.GUARD_FOV, d.range ?? C.GUARD_RANGE, C.VISION);
   Object.assign(g, { kind: 'guard', path, speed: d.speed ?? C.GUARD_SPEED, pause: d.pause ?? C.GUARD_PAUSE,
-    erratic: d.erratic ?? 0, wander, cur: 0, last: -1, target: -1, next: 1, dir: 1, pauseLeft: 0, pauseTotal: 1, lookBase: 0, mult: 1, multLeft: 0 });
+    erratic: d.erratic ?? 0, wander, vel: 0, cur: 0, last: -1, target: -1, next: 1, dir: 1, pauseLeft: 0, pauseTotal: 1, lookBase: 0, mult: 1, multLeft: 0 });
   if (!wander && path.length > 1) g.ang = Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x);
   return g;
 }
@@ -177,11 +177,15 @@ function pickWaypoint(g) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const turnToward = (g, target, dt) => { g.ang += clamp(angleDiff(g.ang, target), -rad(C.GUARD_TURN_DEG) * dt, rad(C.GUARD_TURN_DEG) * dt); };
+
 function patrol(g, dt) {
   if (g.path.length < 2) return;
   if (g.pauseLeft > 0) {
     g.pauseLeft = Math.max(g.pauseLeft - dt, 0);
-    g.ang = g.lookBase + Math.sin(TAU * (1 - g.pauseLeft / g.pauseTotal)) * rad(C.LOOK_DEG);
+    g.vel = Math.max(0, g.vel - C.GUARD_ACCEL * dt);
+    turnToward(g, g.lookBase + Math.sin(TAU * (1 - g.pauseLeft / g.pauseTotal)) * rad(C.LOOK_DEG), dt);
     return;
   }
   const e = g.erratic;
@@ -190,14 +194,13 @@ function patrol(g, dt) {
     if (g.multLeft <= 0) {
       g.mult = rand(1 - 0.5 * e, 1 + 0.4 * e);
       g.multLeft = rand(0.5, 1.5);
-      if (Math.random() < 0.2 * e) { startPause(g, rand(0.4, 0.9)); return; }
+      if (Math.random() < 0.2 * e) { g.mult = 0; g.multLeft = rand(0.6, 1.2); }
     }
   }
   if (g.wander && g.target < 0) g.target = pickWaypoint(g);
   const goal = g.path[g.wander ? g.target : g.next], dx = goal.x - g.x, dy = goal.y - g.y, dist = Math.hypot(dx, dy);
-  const step = g.speed * g.mult * dt;
-  if (dist <= step) {
-    g.x = goal.x; g.y = goal.y;
+  if (dist <= 2) {
+    g.x = goal.x; g.y = goal.y; g.vel = 0;
     if (g.wander) {
       g.last = g.cur; g.cur = g.target; g.target = -1;
     } else {
@@ -207,8 +210,13 @@ function patrol(g, dt) {
     startPause(g, g.pause * (g.wander ? rand(0.3, 1.7) : 1) * rand(1 - 0.4 * e, 1 + 0.6 * e));
     return;
   }
-  g.ang = Math.atan2(dy, dx);
-  g.x += Math.cos(g.ang) * step; g.y += Math.sin(g.ang) * step;
+  const desired = Math.atan2(dy, dx);
+  turnToward(g, desired, dt);
+  const align = Math.max(0, Math.cos(angleDiff(g.ang, desired))) ** 3;
+  const top = Math.min(g.speed * g.mult * align, 15 + dist * 2.5);
+  g.vel += clamp(top - g.vel, -C.GUARD_ACCEL * dt, C.GUARD_ACCEL * dt);
+  const move = Math.min(g.vel * dt, dist);
+  g.x += dx / dist * move; g.y += dy / dist * move;
 }
 
 function sweepLight(l, dt) {
