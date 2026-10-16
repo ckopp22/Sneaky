@@ -12,7 +12,10 @@ var joystick_vector: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
+	add_to_group("player")
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	collision_layer = 1
+	collision_mask = Config.WALL_LAYER
 	(_shape.shape as CircleShape2D).radius = Config.PLAYER_RADIUS
 
 

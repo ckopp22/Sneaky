@@ -2,6 +2,9 @@ class_name Level
 extends Node2D
 
 signal goal_reached
+signal player_spotted
+
+const GUARD_SCENE: PackedScene = preload("res://scenes/guard.tscn")
 
 var map_size: Vector2 = Vector2.ZERO
 var player_start: Vector2 = Vector2.ZERO
@@ -31,6 +34,11 @@ func _build(data: Dictionary) -> void:
 		_add_wall_body(rect)
 	_goal = _tile_rect(data["goal"]["rect"], tile)
 	_add_goal_area(_goal)
+	for guard_data: Dictionary in data.get("guards", []):
+		var guard := GUARD_SCENE.instantiate() as Guard
+		guard.setup(guard_data, tile)
+		guard.spotted.connect(player_spotted.emit)
+		add_child(guard)
 	queue_redraw()
 
 
@@ -41,6 +49,8 @@ func _tile_rect(values: Array, tile: float) -> Rect2:
 func _add_wall_body(rect: Rect2) -> void:
 	var body := StaticBody2D.new()
 	body.position = rect.get_center()
+	body.collision_layer = Config.WALL_LAYER
+	body.collision_mask = 0
 	body.add_child(_make_shape(rect.size))
 	add_child(body)
 

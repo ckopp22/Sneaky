@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/level.gd" id="2_level"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
 [ext_resource type="PackedScene" path="res://scenes/joystick.tscn" id="4_joystick"]
+[ext_resource type="PackedScene" path="res://scenes/fail_popup.tscn" id="5_popup"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -29,3 +30,5 @@ offset_bottom = 46.0
 grow_horizontal = 2
 text = "Goal reached!"
 horizontal_alignment = 1
+
+[node name="FailPopup" parent="UI" instance=ExtResource("5_popup")]
