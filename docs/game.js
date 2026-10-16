@@ -4,7 +4,7 @@ const C = {
   VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 30, COOP_LEVEL_COUNT: 10, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, HEAR_DELAY: 1, GUARD_ACCEL: 60,
+  GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 3,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(217,230,255,0.16)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -208,7 +208,7 @@ const cellPos = (i) => ({ x: (i % S.nav.cols + 0.5) * S.nav.tile, y: (Math.floor
 // A* over the wall grid, then string-pulled so guards cut corners but never clip walls.
 function findRoute(from, to) {
   const { cols, rows, blocked } = S.nav, start = navCell(from), end = navCell(to);
-  if (blocked[start] || blocked[end] || clearLine(from, to)) return [to];
+  if (blocked[start] || blocked[end] || (!S.maze && clearLine(from, to))) return [to];
   const g = new Map([[start, 0]]), prev = new Map(), open = [start], closed = new Set();
   const h = (i) => Math.hypot(i % cols - end % cols, Math.floor(i / cols) - Math.floor(end / cols));
   const f = new Map([[start, h(start)]]);
@@ -222,11 +222,12 @@ function findRoute(from, to) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         const nx = cx + dx, ny = cy + dy;
-        if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        if ((!dx && !dy) || (S.maze && dx && dy) || nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
         const n = ny * cols + nx;
         if (blocked[n] || closed.has(n)) continue;
         if (dx && dy && (blocked[cy * cols + nx] || blocked[ny * cols + cx])) continue;
-        const cost = g.get(cur) + (dx && dy ? 1.414 : 1);
+        const near = S.maze && [-1, 0, 1].some((oy) => [-1, 0, 1].some((ox) => blocked[(ny + oy) * cols + nx + ox]));
+        const cost = g.get(cur) + (dx && dy ? 1.414 : 1) + (near ? 2 : 0);
         if (cost < (g.get(n) ?? Infinity)) {
           g.set(n, cost); prev.set(n, cur); f.set(n, cost + h(n));
           if (!open.includes(n)) open.push(n);
@@ -238,6 +239,16 @@ function findRoute(from, to) {
   const cells = [];
   for (let c = end; c !== start; c = prev.get(c)) cells.unshift(cellPos(c));
   cells[cells.length - 1] = to;
+  if (S.maze) {
+    // hug the hall centre: keep only the corners, and mark them so the guard stops there to look around
+    const pts = [from, ...cells], out = [];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+      if (Math.sign(b.x - a.x) !== Math.sign(c.x - b.x) || Math.sign(b.y - a.y) !== Math.sign(c.y - b.y)) out.push({ x: b.x, y: b.y, turn: true });
+    }
+    out.push(to);
+    return out;
+  }
   const out = [];
   let anchor = from;
   for (let i = 0; i < cells.length; i++) {
@@ -291,8 +302,8 @@ function patrol(g, dt) {
   const goal = g.route[0], last = g.route.length === 1, dx = goal.x - g.x, dy = goal.y - g.y, dist = Math.hypot(dx, dy);
   if (dist <= 2) {
     g.x = goal.x; g.y = goal.y;
-    g.route.shift();
-    if (g.route.length) return;
+    const reached = g.route.shift();
+    if (g.route.length) { if (reached.turn) startPause(g, C.TURN_PAUSE); return; }
     g.vel = 0; g.route = null; g.dest = null;
     if (g.wander) {
       if (g.destIdx >= 0) { g.last = g.cur; g.cur = g.destIdx; }
@@ -384,6 +395,7 @@ async function loadLevel(id, coop = false) {
   buildNav(tile);
   S.diff = data.diff ?? Math.min(1 + 0.035 * Math.max(0, id - 5), 1.75);
   S.roam = id > 5;
+  S.maze = !!data.maze;
   const trig = (list) => (list ?? []).map((o) => ({ id: o.id, ...rect(o.rect), on: false }));
   const barrier = (list, kind) => (list ?? []).map((o) => ({ id: o.id, kind, ...rect(o.rect), open: false }));
   S.plates = trig(data.plates); S.switches = trig(data.switches);

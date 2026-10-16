@@ -44,9 +44,9 @@ function build(n) {
   const guards = Array.from({ length: 2 + Math.floor(k / 3) }, () => ({
     wander: Array.from({ length: 4 }, () => cell(...pick(far))), speed: Math.round(50 + k * 1.5), pause: 1, erratic: 0.3 }));
   const lights = [];
-  for (let i = 0; i < 1 + Math.floor(k / 3); i++) lights.push({ type: 'blink', pos: cell(...pick(far)), radius: 90, period: 3, on: 1.4, offset: Math.round(R() * 3 * 10) / 10 });
+  for (let i = 0; i < 1 + Math.floor(k / 3); i++) lights.push({ type: 'blink', pos: cell(...pick(far)), radius: 90, period: 5, on: 1.2, offset: Math.round(R() * 5 * 10) / 10 });
   if (k >= 3) for (let i = 0; i < 1 + Math.floor(k / 4); i++) lights.push({ type: 'sweep', pos: cell(...pick(far)), arc: pick([[0, 180], [90, 270], [180, 360], [270, 450]]), period: 5, fov: 40, range: 130 });
-  const lvl = { id: n, diff: Math.round((1.15 + k * 0.02) * 100) / 100, name: NAMES[k % NAMES.length], size: [W, H], tileSize: 32, playerStart: cell(sx, sy), goal: { rect: [...cell(gx, gy), 2, 2] }, walls, guards, lights };
+  const lvl = { id: n, maze: true, diff: Math.round((1.15 + k * 0.02) * 100) / 100, name: NAMES[k % NAMES.length], size: [W, H], tileSize: 32, playerStart: cell(sx, sy), goal: { rect: [...cell(gx, gy), 2, 2] }, walls, guards, lights };
   if (n === from) lvl.hint = 'Find the way out. Some paths are dead ends.';
   return lvl;
 }
