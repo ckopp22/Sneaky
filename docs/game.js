@@ -532,7 +532,8 @@ function finishLevel(won) {
   const coop = inCoop();
   const total = coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT;
   const beatAll = won && S.level === total && (DEV || cleared >= total - 1);
-  if (beatAll) { audio.playCelebrate(); startConfetti(); }
+  if (won) startConfetti();
+  if (beatAll) audio.playCelebrate();
   showPopup(beatAll ? 'Beat the Game! Well Done' : won ? 'Level Complete!' : 'Bummer... try again?',
     { resume: false, retry: !won && (!coop || net.role === 'host'), next: won && S.level < (coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT) && (!coop || net.role === 'host'),
       pick: coop && net.role === 'host' });
