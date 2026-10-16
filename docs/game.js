@@ -528,9 +528,6 @@ function buildSelect() {
       b.onclick = () => startLevel(id);
     } else {
       b.textContent = `${id}\n`; b.disabled = true;
-      const lock = document.createElement('img');
-      lock.src = 'assets/ui/icons/icon_lock.png';
-      b.appendChild(lock);
     }
     grid.appendChild(b);
   }
@@ -718,9 +715,6 @@ function showCoopPicker(highest) {
       b.onclick = () => startCoop(id);
     } else {
       b.textContent = `${id}\n`; b.disabled = true;
-      const lock = document.createElement('img');
-      lock.src = 'assets/ui/icons/icon_lock.png';
-      b.appendChild(lock);
     }
     grid.appendChild(b);
   }
