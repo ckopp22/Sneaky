@@ -863,6 +863,7 @@ function drawTrail(p, color = p.color, r = C.PLAYER_R, alpha = p.alpha, life = 3
   if (last && Math.hypot(p.x - last.x, p.y - last.y) > 40) t.length = 0;
   if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) t.push({ x: p.x, y: p.y, t: now });
   while (t.length && now - t[0].t > life) t.shift();
+  if (p.sneak) { t.length = 0; return; }
   ctx.fillStyle = color;
   for (const q of t) {
     const f = 1 - (now - q.t) / life;
