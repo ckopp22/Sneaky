@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0a0d14">
 <meta name="description" content="Sneaky: a stealth game. Sneak past the guards, solo or in online co-op.">
 <meta property="og:title" content="Sneaky">
@@ -55,7 +55,7 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
   image-rendering: pixelated; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; align-items: center; }
 .panel .btn { width: 200px; }
 
-#hud { position: fixed; top: 14px; left: 14px; right: 14px; display: flex; justify-content: space-between;
+#hud { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left)); right: calc(14px + env(safe-area-inset-right)); display: flex; justify-content: space-between;
   pointer-events: none; z-index: 5; }
 #hud .btn { pointer-events: auto; }
 #toggles { display: flex; gap: 8px; }
@@ -72,7 +72,7 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
 .overlay h2 { font-size: 28px; margin: 0 0 4px; font-weight: 400; text-align: center; }
 #cgrid.watch { pointer-events: none; }
 #lobby { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
-  gap: 16px; padding: 70px 16px 32px; overflow-y: auto; touch-action: pan-y; }
+  gap: 16px; padding: calc(70px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); overflow-y: auto; touch-action: pan-y; }
 #lobby img { width: 328px; max-width: 90%; image-rendering: pixelated; }
 #lobby h1 { font-size: 24px; font-weight: 400; margin: 0; }
 #code { font-size: 36px; letter-spacing: 8px; min-height: 44px; color: #6effab; }
@@ -80,7 +80,7 @@ html, body { margin: 0; height: 100%; background: #0a0d14; color: var(--text); o
   color: var(--text); background: #0a0d14; border: 2px solid var(--dim); border-radius: 6px; -webkit-user-select: text; user-select: text; }
 #lobbystatus { margin: 0; max-width: 240px; text-align: center; color: var(--dim); min-height: 40px; }
 #select, #minisel, #coopsel { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
-  gap: 24px; padding: 70px 16px 32px; overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  gap: 24px; padding: calc(70px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 #select > :first-child, #minisel > :first-child, #coopsel > :first-child, #lobby > :first-child { margin-top: auto; }
 #select > :last-child, #minisel > :last-child, #coopsel > :last-child, #lobby > :last-child { margin-bottom: auto; }
 #select img, #minisel img, #coopsel img { width: 328px; max-width: 90%; image-rendering: pixelated; }
