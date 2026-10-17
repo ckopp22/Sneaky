@@ -108,7 +108,9 @@ const audio = (() => {
   a.playKey = () => play(keySnd, 'key', 0.7);
   a.playUnlock = () => play(unlockSnd, 'unlock', 0.7);
   a.playBoom = () => {
-    if (!a.sfx || !a.active) return;
+    const now = performance.now();
+    if (!a.sfx || !a.active || now - (a.lastBoom || 0) < 80) return;
+    a.lastBoom = now;
     try {
       const ac = getAc(), t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
       o.type = 'sawtooth'; o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.25);
