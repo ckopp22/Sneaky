@@ -210,6 +210,7 @@ function makeDrone(x, y, ang, speed) {
 
 function updateShooters(dt) {
   for (const v of S.visions) {
+    if (S.alarm && v.kind === 'guard' && !v.turret && !v.shoot) v.shoot = { every: 3.5, speed: C.DRONE_SPEED, t: Math.random() * 3 };
     const s = v.shoot;
     if (!s) continue;
     s.t += dt;
@@ -449,7 +450,16 @@ function listen(g, dt) {
 function hunt(g, dt) {
   const near = S.players.filter((q) => !q.dead && q.invuln <= 0).sort((a, b) => Math.hypot(a.x - g.x, a.y - g.y) - Math.hypot(b.x - g.x, b.y - g.y))[0];
   const p = S.alarm ? near : S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
-  if (p) { g.chase = { x: p.x, y: p.y }; g.chaseLeft = 1.5; }
+  if (p) {
+    let t = { x: p.x, y: p.y };
+    if (S.alarm) {
+      const gs = S.visions.filter((v) => v.kind === 'guard' && !v.turret), a = TAU * gs.indexOf(g) / gs.length;
+      const rad = clamp((Math.hypot(p.x - g.x, p.y - g.y) - 50) * 0.6, 0, 110);
+      const o = { x: clamp(p.x + Math.cos(a) * rad, 40, S.map.w - 40), y: clamp(p.y + Math.sin(a) * rad, 40, S.map.h - 40) };
+      if (!S.nav.blocked[navCell(o)]) t = o;
+    }
+    g.chase = t; g.chaseLeft = 1.5;
+  }
   if (!(g.chaseLeft > 0)) return false;
   g.chaseLeft -= dt;
   g.pauseLeft = 0; g.dest = null;
@@ -461,6 +471,11 @@ function hunt(g, dt) {
     turnToward(g, Math.atan2(dy, dx), dt * 2);
     const move = Math.min(g.speed * (S.alarm ? 2 : 1.6) * dt, dist);
     g.x += dx / dist * move; g.y += dy / dist * move; g.vel = g.speed;
+    if (S.alarm) for (const o of S.visions) {
+      if (o === g || o.kind !== 'guard' || o.turret) continue;
+      const ox = g.x - o.x, oy = g.y - o.y, od = Math.hypot(ox, oy);
+      if (od > 0 && od < 40) { g.x += ox / od * (40 - od) * 0.15; g.y += oy / od * (40 - od) * 0.15; }
+    }
   }
   if (g.chaseLeft <= 0) { g.route = null; g.vel = 0; startPause(g, 1.5); }
   return true;
