@@ -684,7 +684,6 @@ async function loadLevel(id, coop = false) {
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
   S.chaseAll = data.mini === 'collect';
   S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 0.7, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
-  S.flyDir = null;
   S.fx = []; S.fxOut = []; S.plus = []; S.plusOut = []; S.close = 0;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.royale = data.mini === 'royale'; S.results = null;
@@ -725,12 +724,7 @@ function inputVector() {
   const k = S.keys, x = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
   const y = (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0);
   let v = { x, y };
-  if (!x && !y) {
-    v = { x: S.joy.vx, y: S.joy.vy };
-    // in Fly the ship keeps cruising in the last touch direction until touched again
-    if (v.x || v.y) S.flyDir = { x: v.x, y: v.y };
-    else if (S.mini?.type === 'fly' && S.flyDir) v = S.flyDir;
-  } else S.flyDir = null;
+  if (!x && !y) v = { x: S.joy.vx, y: S.joy.vy };
   const len = Math.hypot(v.x, v.y);
   return len > 1 ? { x: v.x / len, y: v.y / len } : v;
 }
