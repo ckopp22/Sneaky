@@ -624,9 +624,9 @@ async function loadLevel(id, coop = false) {
   S.drones = [];
   S.droneSway = data.droneSway ?? 0;
   S.water = !!data.water; audio.water = S.water;
-  S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
+  S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = data.mini ? 1 : 0;
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
-  S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 1.2, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
+  S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 0.7, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
@@ -695,7 +695,7 @@ function updateMini(dt) {
   f.wave = Math.max(1.6, 3.6 - t * 0.02);
   f.count = [Math.min(1 + Math.floor(t / 40), 4), Math.min(2 + Math.floor(t / 20), 7)];
   f.speed = [Math.min(80 + t * 0.6, 150), Math.min(100 + t * 0.8, 185)];
-  f.turn = Math.min(1.2 + t * 0.01, 2.2);
+  f.turn = Math.min(0.7 + t * 0.006, 1.4);
   S.coinList = S.coinList.filter((c) => !c.got);
   const live = S.players.filter((p) => !p.dead), want = S.players.length > 1 ? 10 : 7;
   for (let tries = 0; S.coinList.length < want && tries < 60; tries++) {
@@ -943,10 +943,31 @@ function drawVision(v) {
   ctx.restore();
 }
 
+const SPACE_T = 1600;
+const SPACE = [[0.12, 1, 0.5], [0.3, 1.6, 0.7], [0.55, 2.4, 0.9]].map(([par, size, alpha]) => (
+  { par, size, alpha, pts: Array.from({ length: 80 }, () => [Math.random() * SPACE_T, Math.random() * SPACE_T, Math.random() * TAU]) }));
+
+function drawSpace(w, h) {
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, '#060820'); g.addColorStop(0.55, '#150b33'); g.addColorStop(1, '#0a1230');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  const now = performance.now() / 1000;
+  for (const L of SPACE) {
+    for (const [px, py, ph] of L.pts) {
+      const x = (((px - S.cam.x * L.par) % SPACE_T) + SPACE_T) % SPACE_T, y = (((py - S.cam.y * L.par) % SPACE_T) + SPACE_T) % SPACE_T;
+      if (x > w || y > h) continue;
+      ctx.globalAlpha = L.alpha * (0.7 + 0.3 * Math.sin(now * 2 + ph));
+      ctx.fillStyle = '#e8eeff'; ctx.fillRect(x, y, L.size, L.size);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawWorld() {
   const { w, h, scale, dpr } = S.view, ox = w / 2 - S.cam.x, oy = h / 2 - S.cam.y;
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   ctx.fillStyle = C.BG; ctx.fillRect(0, 0, w, h);
+  if (S.mini) drawSpace(w, h);
   ctx.save(); ctx.translate(ox, oy);
   ctx.fillStyle = C.WALL;
   for (const r of S.walls) ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -1010,7 +1031,7 @@ function drawWorld() {
   const cr = lr * 0.55;
   lctx.drawImage(tinted, lp.x + ox - cr, lp.y + oy - cr, cr * 2, cr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  S.alarmK += ((S.alarm ? 1 : 0) - S.alarmK) * 0.12;
+  S.alarmK += ((S.alarm || S.mini ? 1 : 0) - S.alarmK) * 0.12;
   ctx.globalCompositeOperation = 'multiply';
   ctx.globalAlpha = 1 - S.alarmK;
   ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
@@ -1044,7 +1065,7 @@ function drawWorld() {
     ctx.beginPath(); ctx.arc(kx - 5, ky, 5, 0, TAU); ctx.stroke();
     ctx.fillRect(kx, ky - 1.25, 12, 2.5); ctx.fillRect(kx + 8, ky, 2.5, 5); ctx.fillRect(kx + 12, ky, 2.5, 4);
   }
-  ctx.drawImage(IMG.vignette, 0, 0, w, h);
+  if (!S.mini) ctx.drawImage(IMG.vignette, 0, 0, w, h);
   if (S.mini) {
     const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 120);
     for (const d of S.drones) {
