@@ -8,7 +8,7 @@ const C = {
     'Dogleg', 'Teardrop', 'Figure Eight', 'Wave Cave', 'Horseshoe', 'Pods', 'Lightning', 'Roots', 'Sunburst', 'Grand Vault',
     'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 44, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
+  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_SWAY: 62, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -199,7 +199,7 @@ function makeGuard(d, tile) {
 
 function makeDrone(x, y, ang, speed) {
   const d = makeVision(x, y, 360, C.DRONE_R, C.LIGHT);
-  return Object.assign(d, { kind: 'drone', ang, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed });
+  return Object.assign(d, { kind: 'drone', ang, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, bx: x, by: y, spd: speed, trav: 0 });
 }
 
 function updateShooters(dt) {
@@ -211,8 +211,12 @@ function updateShooters(dt) {
     if (s.t >= s.every) { s.t = 0; v.windup = false; S.drones.push(makeDrone(v.x, v.y, v.ang + (v.sway || 0), s.speed)); }
   }
   for (let i = S.drones.length - 1; i >= 0; i--) {
-    const d = S.drones[i], nx = d.x + d.vx * dt, ny = d.y + d.vy * dt;
-    if (raycast(d.x, d.y, nx, ny)) S.drones.splice(i, 1); else { d.x = nx; d.y = ny; }
+    const d = S.drones[i], nx = d.bx + d.vx * dt, ny = d.by + d.vy * dt;
+    if (raycast(d.bx, d.by, nx, ny)) { S.drones.splice(i, 1); continue; }
+    d.bx = nx; d.by = ny; d.trav += d.spd * dt;
+    const off = C.DRONE_SWAY * Math.min(1, d.trav / 200) * Math.sin(d.trav / 35), sx = nx - d.vy / d.spd * off, sy = ny + d.vx / d.spd * off;
+    const inWall = S.solid.some((w) => sx >= w.x && sx <= w.x + w.w && sy >= w.y && sy <= w.y + w.h);
+    d.x = inWall ? nx : sx; d.y = inWall ? ny : sy;
   }
 }
 
@@ -769,7 +773,7 @@ function drawWorld() {
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   for (const d of S.drones) {
-    const gr = 26, dxp = d.x + ox, dyp = d.y + oy;
+    const gr = 32, dxp = d.x + ox, dyp = d.y + oy;
     ctx.drawImage(IMG.glow, dxp - gr, dyp - gr, gr * 2, gr * 2);
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(dxp, dyp, 3.5, 0, TAU); ctx.fill();
   }
