@@ -447,19 +447,25 @@ function listen(g, dt) {
   g.lookBase = g.ang + Math.PI;
 }
 
+function spawnDefender() {
+  const t = S.nav.tile, g = makeGuard({ path: [[(S.goal.x + S.goal.w / 2) / t - 0.5, (S.goal.y + S.goal.h / 2) / t - 0.5]], fov: 100, range: 170 }, t);
+  return Object.assign(g, { defender: true, home: { x: g.x, y: g.y }, ang: Math.PI });
+}
+
 function hunt(g, dt) {
   const near = S.players.filter((q) => !q.dead && q.invuln <= 0).sort((a, b) => Math.hypot(a.x - g.x, a.y - g.y) - Math.hypot(b.x - g.x, b.y - g.y))[0];
-  const p = S.alarm ? near : S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
+  const p = g.defender ? near && Math.hypot(near.x - g.home.x, near.y - g.home.y) < 170 && near : S.alarm ? near : S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
   if (p) {
     let t = { x: p.x, y: p.y };
     if (S.alarm) {
-      const gs = S.visions.filter((v) => v.kind === 'guard' && !v.turret), a = TAU * gs.indexOf(g) / gs.length;
+      const gs = S.visions.filter((v) => v.kind === 'guard' && !v.turret && !v.defender), a = TAU * gs.indexOf(g) / gs.length;
       const rad = clamp((Math.hypot(p.x - g.x, p.y - g.y) - 50) * 0.6, 0, 110);
       const o = { x: clamp(p.x + Math.cos(a) * rad, 40, S.map.w - 40), y: clamp(p.y + Math.sin(a) * rad, 40, S.map.h - 40) };
       if (!S.nav.blocked[navCell(o)]) t = o;
     }
     g.chase = t; g.chaseLeft = 1.5;
   }
+  if (g.defender && !p && Math.hypot(g.home.x - g.x, g.home.y - g.y) > 4) { g.chase = g.home; g.chaseLeft = 1; }
   if (!(g.chaseLeft > 0)) return false;
   g.chaseLeft -= dt;
   g.pauseLeft = 0; g.dest = null;
@@ -623,11 +629,14 @@ function step(dt) {
   });
   const spotted = new Set();
   updateShooters(dt);
-  for (const v of [...S.visions, ...S.drones]) updateVision(v, dt).forEach((i) => spotted.add(i));
+  const droneHit = new Set();
+  for (const v of S.visions) updateVision(v, dt).forEach((i) => spotted.add(i));
+  for (const v of S.drones) updateVision(v, dt).forEach((i) => droneHit.add(i));
   if (S.alarmLevel) {
-    if (!S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); }
+    if (!S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); S.visions.push(spawnDefender()); }
     spotted.clear();
   }
+  droneHit.forEach((i) => spotted.add(i));
   for (const v of S.visions) {
     if (v.kind !== 'guard' || v.turret) continue;
     S.players.forEach((p, i) => {
@@ -1225,6 +1234,7 @@ function applySnapshot(m) {
       return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0 });
     });
   }
+  while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
   m.v.forEach(([x, y, ang, active, seen, windup], i) => {
     const v = S.visions[i];
     if (!v) return;
