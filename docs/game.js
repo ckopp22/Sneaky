@@ -107,6 +107,16 @@ const audio = (() => {
   a.playWin = () => play(win, 'win', 0.8);
   a.playKey = () => play(keySnd, 'key', 0.7);
   a.playUnlock = () => play(unlockSnd, 'unlock', 0.7);
+  a.playBoom = () => {
+    if (!a.sfx || !a.active) return;
+    try {
+      const ac = getAc(), t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(35, t + 0.25);
+      g.gain.setValueAtTime(0.14, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+      o.connect(g).connect(ac.destination);
+      o.start(t); o.stop(t + 0.3);
+    } catch { /* ignore */ }
+  };
   a.playCoin = () => {
     if (!a.sfx || !a.active) return;
     try {
@@ -235,7 +245,7 @@ function spawnWave(dt) {
   const live = S.players.filter((p) => !p.dead);
   if (!live.length) return;
   if (S.mini) {
-    if (S.drones.length >= 30) return;
+    if (S.drones.length >= 60) return;
     const n = f.count[0] + Math.floor(Math.random() * (f.count[1] - f.count[0] + 1)), R = Math.hypot(S.view.w, S.view.h) / 2 + 60;
     for (let i = 0; i < n; i++) {
       const c = live[Math.floor(Math.random() * live.length)];
@@ -243,7 +253,7 @@ function spawnWave(dt) {
         const a = rand(0, TAU), x = c.x + Math.cos(a) * R, y = c.y + Math.sin(a) * R;
         if (x < 50 || y < 50 || x > S.map.w - 50 || y > S.map.h - 50 || S.solid.some((w) => x > w.x - 10 && x < w.x + w.w + 10 && y > w.y - 10 && y < w.y + w.h + 10)) continue;
         const d = makeDrone(x, y, Math.atan2(c.y - y, c.x - x), rand(f.speed[0], f.speed[1]));
-        Object.assign(d, { lock: true, turn: f.turn, active: false });
+        Object.assign(d, { lock: true, turn: f.turn, active: false, explode: true });
         S.drones.push(d);
         break;
       }
@@ -260,6 +270,12 @@ function spawnWave(dt) {
     Object.assign(d, { straight: true, active: false });
     S.drones.push(d);
   }
+}
+
+function explode(x, y) {
+  S.fx.push({ x, y, t0: performance.now() });
+  if (inCoop()) S.fxOut.push([Math.round(x), Math.round(y)]);
+  if (Math.abs(x - S.cam.x) < S.view.w / 2 && Math.abs(y - S.cam.y) < S.view.h / 2) audio.playBoom();
 }
 
 function updateShooters(dt) {
@@ -296,7 +312,8 @@ function updateShooters(dt) {
     }
     const nx = d.bx + d.vx * dt, ny = d.by + d.vy * dt;
     if (d.lock) {
-      // locked drones slide along walls instead of vanishing
+      // locked drones slide along walls; fly drones blow up on impact
+      if (d.explode && raycast(d.bx, d.by, nx, ny)) { explode(d.bx, d.by); S.drones.splice(i, 1); continue; }
       if (!raycast(d.bx, d.by, nx, ny)) { d.bx = nx; d.by = ny; }
       else if (!raycast(d.bx, d.by, nx, d.by)) d.bx = nx;
       else if (!raycast(d.bx, d.by, d.bx, ny)) d.by = ny;
@@ -649,6 +666,7 @@ async function loadLevel(id, coop = false) {
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
   S.chaseAll = data.mini === 'collect';
   S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 0.7, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
+  S.fx = []; S.fxOut = [];
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.royale = data.mini === 'royale'; S.results = null;
   S.bots = (data.bots ?? []).map((a) => ({ ...at(a), dead: false, cd: rand(1, 3), strafe: 1, wt: 0 }));
@@ -1143,6 +1161,15 @@ function drawWorld() {
       ctx.shadowBlur = 0;
     }
   }
+  const nowt = performance.now();
+  S.fx = S.fx.filter((e) => nowt - e.t0 < 500);
+  for (const e of S.fx) {
+    const k = (nowt - e.t0) / 500;
+    ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#ff9a3c'; ctx.lineWidth = 1 + 3 * (1 - k);
+    ctx.beginPath(); ctx.arc(e.x, e.y, 8 + 44 * k, 0, TAU); ctx.stroke();
+    ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.arc(e.x, e.y, 14 * (1 - k), 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
   for (const b of S.bots) {
     if (b.dead) continue;
     drawTrail(b, '#ffb36b', C.PLAYER_R, 1, 120);
@@ -1589,6 +1616,7 @@ function snapshot() {
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0, Math.round((p.cd || 0) * 10) / 10]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0, v.dead ? 1 : 0]),
     b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills,
+    ex: S.fxOut.splice(0),
     rb: S.royale ? S.bots.map((b) => [r(b.x), r(b.y), b.dead ? 1 : 0]) : undefined, rz: S.royale ? Math.round(S.zone.r) : 0, ra: S.alive, cn: S.mini ? undefined : S.coinList.map((c) => (c.got ? 1 : 0)),
     cm: S.mini ? S.coinList.filter((c) => !c.got).map((c) => [r(c.x), r(c.y)]) : undefined, cs: S.coins,
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
@@ -1626,6 +1654,7 @@ function applySnapshot(m) {
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
   while (S.chaseAll && S.visions.length < m.v.length) S.visions.push(makeChaser(...m.v[S.visions.length]));
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
+  for (const [x, y] of m.ex || []) { S.fx.push({ x, y, t0: performance.now() }); if (Math.abs(x - S.cam.x) < S.view.w / 2 && Math.abs(y - S.cam.y) < S.view.h / 2) audio.playBoom(); }
   if (m.kl !== undefined) S.kills = m.kl;
   if (m.rb) {
     m.rb.forEach(([x, y, dead], i) => { const b = S.bots[i] || (S.bots[i] = { x, y }); b.tx = x; b.ty = y; b.dead = !!dead; });
