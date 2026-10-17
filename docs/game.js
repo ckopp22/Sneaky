@@ -436,7 +436,9 @@ async function loadLevel(id, coop = false) {
   const trig = (list) => (list ?? []).map((o) => ({ id: o.id, ...rect(o.rect), on: false }));
   const barrier = (list, kind) => (list ?? []).map((o) => ({ id: o.id, kind, ...rect(o.rect), open: false }));
   S.plates = trig(data.plates); S.switches = trig(data.switches);
-  S.barriers = [...barrier(data.gates, 'gate'), ...barrier(data.doors, 'door')];
+  S.barriers = [...barrier(data.gates, 'gate'), ...barrier(data.doors, 'door'), ...barrier(data.lock ? [{ id: 'k', rect: data.lock.rect }] : [], 'lock')];
+  S.key = data.key ? { x: (data.key[0] + 0.5) * tile, y: (data.key[1] + 0.5) * tile } : null;
+  S.keyGot = false;
   updateSolids();
   S.goal = rect(data.goal.rect);
   const ps = data.playerStart ?? data.playerStarts[0];
@@ -471,7 +473,10 @@ function updateMechanics() {
   const alive = S.players.filter((p) => !p.dead);
   for (const pl of S.plates) pl.on = alive.some((p) => touchesRect(p, pl));
   for (const sw of S.switches) if (!sw.on && alive.some((p) => touchesRect(p, sw))) sw.on = true;
-  for (const b of S.barriers) b.open = (b.kind === 'gate' ? S.plates : S.switches).some((t) => t.id === b.id && t.on);
+  if (S.key && !S.keyGot && alive.some((p) => Math.hypot(p.x - S.key.x, p.y - S.key.y) < C.PLAYER_R + 12)) {
+    S.keyGot = true; S.hint = 'Key found! The door is unlocked.'; S.hintT = 4;
+  }
+  for (const b of S.barriers) b.open = b.kind === 'lock' ? S.keyGot : (b.kind === 'gate' ? S.plates : S.switches).some((t) => t.id === b.id && t.on);
   updateSolids();
 }
 
@@ -629,7 +634,7 @@ function drawMechanics() {
     ctx.strokeStyle = 'rgba(10,13,20,0.7)'; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, TAU); ctx.stroke();
   }
   for (const b of S.barriers) {
-    const c = idColor(b.id);
+    const c = b.kind === 'lock' ? '255,217,77' : idColor(b.id);
     if (b.open) {
       ctx.strokeStyle = `rgba(${c},0.35)`; ctx.setLineDash([4, 6]); ctx.strokeRect(b.x, b.y, b.w, b.h); ctx.setLineDash([]);
       continue;
@@ -729,6 +734,13 @@ function drawWorld() {
   ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+  if (S.key && !S.keyGot) {
+    const kx = S.key.x + ox, ky = S.key.y + oy, pulse = 1 + 0.15 * Math.sin(performance.now() / 250), gr = 34 * pulse;
+    ctx.drawImage(IMG.glow, kx - gr, ky - gr, gr * 2, gr * 2);
+    ctx.fillStyle = '#ffd94d'; ctx.strokeStyle = '#ffd94d'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(kx - 5, ky, 5, 0, TAU); ctx.stroke();
+    ctx.fillRect(kx, ky - 1.25, 12, 2.5); ctx.fillRect(kx + 8, ky, 2.5, 5); ctx.fillRect(kx + 12, ky, 2.5, 4);
+  }
   ctx.drawImage(IMG.vignette, 0, 0, w, h);
   if (S.mode === 'catching') {
     const k = Math.sin(Math.PI * S.catchT / C.CATCH_TIME), z = 1 + 0.25 * k;
@@ -1063,13 +1075,14 @@ function onPartnerLeft() {
 
 function snapshot() {
   const r = (n) => Math.round(n * 10) / 10;
-  return { t: 's', c: S.cpActive ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
+  return { t: 's', c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0]) };
 }
 
 function applySnapshot(m) {
   S.cpActive = !!m.c;
+  if (m.k && !S.keyGot) { S.keyGot = true; S.hint = 'Key found! The door is unlocked.'; S.hintT = 4; }
   if (m.o) { m.o.forEach((o, i) => { if (S.barriers[i]) S.barriers[i].open = !!o; }); }
   if (m.a) { [...S.plates, ...S.switches].forEach((t, i) => { t.on = !!m.a[i]; }); }
   updateSolids();
