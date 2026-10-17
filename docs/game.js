@@ -271,7 +271,13 @@ function updateShooters(dt) {
     if (!s) continue;
     s.t += dt;
     v.windup = s.t >= s.every - C.WINDUP;
-    if (s.t >= s.every) { s.t = 0; v.windup = false; S.drones.push(makeDrone(v.x, v.y, v.ang + (v.sway || 0), s.speed)); }
+    if (s.t >= s.every) { s.t = 0; v.windup = false; 
+      if (S.chaseAll) {
+        const tgt = S.players.filter((p) => !p.dead).sort((a, b) => Math.hypot(a.x - v.x, a.y - v.y) - Math.hypot(b.x - v.x, b.y - v.y))[0];
+        if (!tgt || S.drones.length >= 30) continue;
+        S.drones.push(Object.assign(makeDrone(v.x, v.y, Math.atan2(tgt.y - v.y, tgt.x - v.x), s.speed), { active: false, lock: true, turn: 0.9, life: 9 }));
+      } else S.drones.push(makeDrone(v.x, v.y, v.ang + (v.sway || 0), s.speed));
+    }
   }
   for (let i = S.drones.length - 1; i >= 0; i--) {
     const d = S.drones[i];
@@ -708,7 +714,8 @@ function killPlayer(i) {
 
 function makeChaser(x, y, speed = C.GUARD_SPEED) {
   const t = S.nav.tile;
-  return makeGuard({ path: [[x / t - 0.5, y / t - 0.5]], fov: 50, range: 90, speed }, t);
+  const g = makeGuard({ path: [[x / t - 0.5, y / t - 0.5]], fov: 50, range: 90, speed }, t), age = S.mini ? S.mini.t : 0;
+  return Object.assign(g, { active: false, glow: 56, shoot: { every: Math.max(2.5, 5.5 - age * 0.02), speed: Math.min(80 + age * 0.4, 130), t: Math.random() * 3 } });
 }
 
 function killFighter(f) {
@@ -876,7 +883,7 @@ function step(dt) {
     if (!S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); S.visions.push(spawnDefender()); }
     spotted.clear();
   }
-  if (S.alarmLevel || S.fly) {
+  if (S.alarmLevel || S.fly || S.chaseAll) {
     droneHit.clear();
     for (const d of S.drones) S.players.forEach((p, i) => {
       if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - d.x, p.y - d.y) < C.PLAYER_R + 6) droneHit.add(i);
@@ -1039,9 +1046,9 @@ function drawVision(v) {
     ctx.fillStyle = C.GUARD; ctx.fillRect(-9, -9, 18, 18);
     ctx.strokeStyle = '#ffb3a0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(v.ang) * 16, Math.sin(v.ang) * 16); ctx.stroke();
   } else if (v.kind === 'guard') {
-    const hz = ctx.createRadialGradient(0, 0, 4, 0, 0, 34);
-    hz.addColorStop(0, 'rgba(255,38,38,0.4)'); hz.addColorStop(1, 'rgba(255,38,38,0)');
-    ctx.fillStyle = hz; ctx.beginPath(); ctx.arc(0, 0, 34, 0, TAU); ctx.fill();
+    const gr = v.glow ?? 34, hz = ctx.createRadialGradient(0, 0, 4, 0, 0, gr);
+    hz.addColorStop(0, `rgba(255,38,38,${v.glow ? 0.6 : 0.4})`); hz.addColorStop(1, 'rgba(255,38,38,0)');
+    ctx.fillStyle = hz; ctx.beginPath(); ctx.arc(0, 0, gr, 0, TAU); ctx.fill();
     ctx.fillStyle = C.GUARD; ctx.beginPath();
     for (let i = 0; i < 16; i++) {
       const r = i % 2 === 0 ? 15 : 5, a = v.ang + Math.PI * i / 8;
@@ -1603,7 +1610,7 @@ function applySnapshot(m) {
   if (m.d) {
     S.drones = m.d.map(([x, y, seen], i) => {
       const o = S.drones[i] || makeDrone(x, y, 0, 0);
-      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0, active: !S.fly });
+      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0, active: !(S.fly || S.chaseAll) });
     });
   }
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
