@@ -1,7 +1,7 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 100, COOP_LEVEL_COUNT: 90, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 100, COOP_LEVEL_COUNT: 100, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon',
@@ -10,7 +10,8 @@ const C = {
     'Duet Shallows', 'Decoy', 'Wet Gate', 'Two Reeds', 'Tide Pair', 'Lure Left', 'Lagoon Duo', 'Gate Current', 'Deep Pair', 'Abyss Duo',
     'Lights Out', 'Open Floor', 'Crowd', 'Four Corners', 'Wide Open', 'Patrol Ring', 'Big Hall', 'Cross Fire', 'Full House', 'Alarm Bells',
     'Duo Aim', 'Cover Fire', 'Back to Back', 'Two Shots', 'Overwatch', 'Clear the Hall', 'Pair Shot', 'Hot Lead', 'Standoff', 'Final Volley',
-    'Wingmates', 'Formation', 'Crosswind Duo', 'Twin Flak', 'Hedge Hop', 'Close Air', 'Barrel Roll', 'Dogfight', 'Storm Front', 'Final Approach'], STEP: 1 / 60,
+    'Wingmates', 'Formation', 'Crosswind Duo', 'Twin Flak', 'Hedge Hop', 'Close Air', 'Barrel Roll', 'Dogfight', 'Storm Front', 'Final Approach',
+    'Coin Rush', 'Glint', 'Gold Dust', 'Treasure Hall', 'Pocket Change', 'Gilded Floor', 'Bounty', 'Mint', 'Vault Run', 'Jackpot'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, SHOT_CD: 2, BULLET_SPEED: 340, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
@@ -561,7 +562,8 @@ async function loadLevel(id, coop = false) {
     ? (data.playerStarts ?? [[0, 0], [0, 0]]).map((a, i) => ({ ...(data.playerStarts ? at(a) : { x: sx, y: sy + (i ? 11 : -11) }), color: i ? C.PLAYER2 : C.PLAYER }))
     : [{ x: sx, y: sy, color: C.PLAYER }];
   S.players.forEach((p) => Object.assign(p, { alpha: 1, dead: false, invuln: 0, respawnT: 0, cd: 0, face: { x: 1, y: 0 } }));
-  S.checkpoint = data.checkpoint ? rect(data.checkpoint.rect) : null;
+  S.checkpoint = data.checkpoint ? rect(data.checkpoint.rect) : data.respawn ? rect(data.respawn) : null;
+  S.cpRepeat = !!data.respawn;
   S.cpActive = false;
   S.hint = data.hint ?? ''; S.hintT = 8;
   S.failT = 1.2;
@@ -572,6 +574,7 @@ async function loadLevel(id, coop = false) {
   S.water = !!data.water; audio.water = S.water;
   S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
   S.fly = data.fly ? { ...data.fly, t: 2 } : null;
+  S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
@@ -631,6 +634,13 @@ function killPlayer(i) {
   audio.playAlert();
 }
 
+function updateCoins() {
+  for (const c of S.coinList) {
+    if (c.got || !S.players.some((p) => !p.dead && Math.hypot(p.x - c.x, p.y - c.y) < C.PLAYER_R + 9)) continue;
+    c.got = true; S.coins++; audio.playKey();
+  }
+}
+
 function spawnBullet(p, d) {
   S.bullets.push({ x: p.x + d.x * 14, y: p.y + d.y * 14, vx: d.x * C.BULLET_SPEED, vy: d.y * C.BULLET_SPEED, life: 1.6 });
 }
@@ -669,8 +679,11 @@ function step(dt) {
   followCamera();
   updateMechanics();
   updateBullets(dt);
-  if (S.kills >= S.need && S.players.some((p) => !p.dead && touchesRect(p, S.goal))) return endLevel(true);
-  if (S.checkpoint && !S.cpActive && S.players.some((p) => !p.dead && touchesRect(p, S.checkpoint))) {
+  updateCoins();
+  if (S.coinNeed ? S.coins >= S.coinNeed : S.kills >= S.need && S.players.some((p) => !p.dead && touchesRect(p, S.goal))) return endLevel(true);
+  if (S.cpRepeat) {
+    if (S.players.some((p) => p.dead) && S.players.some((p) => !p.dead && touchesRect(p, S.checkpoint))) S.players.forEach((p, i) => { if (p.dead) revive(p, i); });
+  } else if (S.checkpoint && !S.cpActive && S.players.some((p) => !p.dead && touchesRect(p, S.checkpoint))) {
     S.cpActive = true;
     S.players.forEach((p, i) => { if (p.dead) revive(p, i); });
   }
@@ -857,7 +870,7 @@ function drawWorld() {
     const d = Math.min(...S.players.filter((p) => !p.dead).map((p) => Math.hypot(p.x - (g.x + g.w / 2), p.y - (g.y + g.h / 2))));
     ga = clamp((260 - d) / 110, 0, 1);
   }
-  if (ga > 0) {
+  if (ga > 0 && !S.coinNeed) {
     ctx.globalAlpha = ga;
     const locked = S.kills < S.need;
     if (!locked) ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
@@ -924,6 +937,13 @@ function drawWorld() {
     ctx.drawImage(IMG.glow, dxp - gr, dyp - gr, gr * 2, gr * 2);
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(dxp, dyp, 3.5, 0, TAU); ctx.fill();
   }
+  for (const c of S.coinList) {
+    if (c.got) continue;
+    const kx = c.x + ox, ky = c.y + oy, pulse = 1 + 0.15 * Math.sin(performance.now() / 250 + c.x), gr = 26 * pulse;
+    ctx.drawImage(IMG.glow, kx - gr, ky - gr, gr * 2, gr * 2);
+    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(kx, ky, 6, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(kx, ky, 3.5, 0, TAU); ctx.stroke();
+  }
   if (S.key && !S.keyGot) {
     const kx = S.key.x + ox, ky = S.key.y + oy, pulse = 1 + 0.15 * Math.sin(performance.now() / 250), gr = 34 * pulse;
     ctx.drawImage(IMG.glow, kx - gr, ky - gr, gr * 2, gr * 2);
@@ -940,6 +960,7 @@ function drawWorld() {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
+  if (S.coinNeed) { ctx.fillStyle = S.coins >= S.coinNeed ? '#6effab' : '#ffd94d'; ctx.fillText(`Coins: ${S.coins}/${S.coinNeed}`, w / 2, 28); }
   if (S.shoot && S.need) { ctx.fillStyle = S.kills >= S.need ? '#6effab' : '#ffd94d'; ctx.fillText(`Enemies down: ${S.kills}/${S.need}`, w / 2, 28); }
   const wrap = (text) => {
     const lines = []; let cur = '';
@@ -1279,7 +1300,7 @@ function snapshot() {
   return { t: 's', al: S.alarm ? 1 : 0, c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0, Math.round((p.cd || 0) * 10) / 10]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0, v.dead ? 1 : 0]),
-    b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills,
+    b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills, cn: S.coinList.map((c) => (c.got ? 1 : 0)),
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
 }
 
@@ -1315,6 +1336,7 @@ function applySnapshot(m) {
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
   if (m.kl !== undefined) S.kills = m.kl;
+  if (m.cn) { m.cn.forEach((g, i) => { const c = S.coinList[i]; if (c && g && !c.got) { c.got = true; audio.playKey(); } }); S.coins = S.coinList.filter((c) => c.got).length; }
   m.v.forEach(([x, y, ang, active, seen, windup, dead], i) => {
     const v = S.visions[i];
     if (!v) return;
