@@ -653,12 +653,12 @@ function drawVision(v) {
     ctx.closePath(); ctx.fill();
   }
   if (v.kind === 'guard') {
-    ctx.fillStyle = C.GUARD; ctx.beginPath();
+    ctx.fillStyle = C.GUARD; ctx.shadowColor = 'rgba(255,38,38,0.8)'; ctx.shadowBlur = 14; ctx.beginPath();
     for (let i = 0; i < 16; i++) {
       const r = i % 2 === 0 ? 15 : 5, a = v.ang + Math.PI * i / 8;
       ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
-    ctx.closePath(); ctx.fill();
+    ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
   } else {
     ctx.fillStyle = v.active ? C.LAMP_ON : C.LAMP_OFF;
     ctx.beginPath(); ctx.arc(0, 0, 5, 0, TAU); ctx.fill();
@@ -696,7 +696,10 @@ function drawWorld() {
   }
   drawMechanics();
   for (const v of S.visions) {
-    if (Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) drawVision(v);
+    if (Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) {
+      if (v.kind === 'guard') drawTrail(v, '#ff2626', 11, 1);
+      drawVision(v);
+    }
   }
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
@@ -734,16 +737,16 @@ function drawWorld() {
   drawJoystick();
 }
 
-function drawTrail(p) {
+function drawTrail(p, color = p.color, r = C.PLAYER_R, alpha = p.alpha) {
   const now = performance.now(), t = p.trail || (p.trail = []), last = t[t.length - 1];
   if (last && Math.hypot(p.x - last.x, p.y - last.y) > 40) t.length = 0;
   if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) t.push({ x: p.x, y: p.y, t: now });
   while (t.length && now - t[0].t > 350) t.shift();
-  ctx.fillStyle = p.color;
+  ctx.fillStyle = color;
   for (const q of t) {
     const f = 1 - (now - q.t) / 350;
-    ctx.globalAlpha = p.alpha * f * 0.4;
-    ctx.beginPath(); ctx.arc(q.x, q.y, C.PLAYER_R * (0.4 + 0.5 * f), 0, TAU); ctx.fill();
+    ctx.globalAlpha = alpha * f * 0.4;
+    ctx.beginPath(); ctx.arc(q.x, q.y, r * (0.4 + 0.5 * f), 0, TAU); ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
