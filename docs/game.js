@@ -1,14 +1,14 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 60, COOP_LEVEL_COUNT: 50, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 70, COOP_LEVEL_COUNT: 50, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon',
     'Dogleg', 'Teardrop', 'Figure Eight', 'Wave Cave', 'Horseshoe', 'Pods', 'Lightning', 'Roots', 'Sunburst', 'Grand Vault',
     'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
+  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -46,7 +46,7 @@ const audio = (() => {
   const make = (name, volume, loop = false) => Object.assign(new Audio(`assets/audio/${name}.mp3`), { volume, loop });
   const a = { active: true, music: saved.music !== false, sfx: saved.sfx !== false, track: 0, started: false, rolling: false };
   const tracks = [1, 2, 3].map((n) => make(`music${n}`, 0.4));
-  const alert = make('alert', 0.63), win = make('win', 0.8), keySnd = make('key', 0.7), unlockSnd = make('unlock', 0.7), roll = make('rolling', 0.4, true);
+  const alert = make('alert', 0.63), win = make('win', 0.8), keySnd = make('key', 0.7), unlockSnd = make('unlock', 0.7), roll = make('rolling', 0.4, true), walk = make('water', 0.6, true);
   const level = () => (a.ducked ? 0.15 : 0.4);
   const playTrack = () => {
     const t = tracks[a.track];
@@ -92,7 +92,7 @@ const audio = (() => {
   a.setActive = (on) => {
     a.active = on;
     if (!on) {
-      for (const s of [...tracks, alert, win, keySnd, unlockSnd, roll]) s.pause();
+      for (const s of [...tracks, alert, win, keySnd, unlockSnd, roll, walk]) s.pause();
       a.rolling = false;
     } else if (a.started && a.music) {
       tracks[a.track].play().catch(() => {});
@@ -123,7 +123,9 @@ const audio = (() => {
     on = on && a.sfx && a.active;
     if (on === a.rolling) return;
     a.rolling = on;
-    if (on) roll.play().catch(() => {}); else roll.pause();
+    const cur = a.water ? walk : roll;
+    roll.pause(); walk.pause();
+    if (on) cur.play().catch(() => {});
   };
   return a;
 })();
@@ -442,11 +444,29 @@ function listen(g, dt) {
   g.lookBase = g.ang + Math.PI;
 }
 
+function hunt(g, dt) {
+  const p = S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
+  if (p) { g.chase = { x: p.x, y: p.y }; g.chaseLeft = 1.5; }
+  if (!(g.chaseLeft > 0)) return false;
+  g.chaseLeft -= dt;
+  g.pauseLeft = 0; g.dest = null;
+  g.reT = (g.reT || 0) - dt;
+  if (!g.route || g.reT <= 0 || p) { g.route = findRoute(g, g.chase); g.reT = 0.4; }
+  const goal = g.route[0], dx = goal.x - g.x, dy = goal.y - g.y, dist = Math.hypot(dx, dy);
+  if (dist <= 2) { g.route.shift(); if (!g.route.length) g.chaseLeft = Math.min(g.chaseLeft, 0); }
+  else {
+    turnToward(g, Math.atan2(dy, dx), dt * 2);
+    const move = Math.min(g.speed * 1.6 * dt, dist);
+    g.x += dx / dist * move; g.y += dy / dist * move; g.vel = g.speed;
+  }
+  if (g.chaseLeft <= 0) { g.route = null; g.vel = 0; startPause(g, 1.5); }
+  return true;
+}
+
 function updateVision(v, dt) {
   if (v.kind === 'guard') {
     if (!v.turret) {
-      listen(v, dt);
-      patrol(v, dt);
+      if (!(S.water && hunt(v, dt))) { listen(v, dt); patrol(v, dt); }
       v.swayT = (v.swayT ?? Math.random() * TAU) + (v.seen > 0 ? 0 : dt * 2.4);
       v.sway = rad(C.GUARD_SWAY_DEG) * Math.sin(v.swayT);
     }
@@ -501,6 +521,8 @@ async function loadLevel(id, coop = false) {
   S.coopMenu = false;
   S.drones = [];
   S.droneSway = data.droneSway ?? 0;
+  S.water = !!data.water; audio.water = S.water;
+  S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
   S.zoom = coop ? C.ZOOM_COOP : C.ZOOM_SOLO;
@@ -540,7 +562,8 @@ function inputVector() {
 }
 
 function movePlayer(p, dir, dt) {
-  p.x += dir.x * C.PLAYER_SPEED * dt; p.y += dir.y * C.PLAYER_SPEED * dt;
+  const sp = C.PLAYER_SPEED * (p.sneak ? C.SNEAK_MULT : 1);
+  p.x += dir.x * sp * dt; p.y += dir.y * sp * dt;
   for (let i = 0; i < 3; i++) for (const w of S.solid) pushOut(p, w);
 }
 
@@ -561,8 +584,11 @@ function step(dt) {
   S.players.forEach((p, i) => {
     if (p.dead) return;
     const dir = i === S.me ? inputVector() : S.remoteInput;
+    const moving = dir.x !== 0 || dir.y !== 0;
+    p.sneak = S.water && i === S.me && (S.sneakKey || S.sneakLatch);
+    p.noisy = S.water && moving && !p.sneak;
     movePlayer(p, dir, dt);
-    if (i === S.me) audio.setRolling(dir.x !== 0 || dir.y !== 0);
+    if (i === S.me) audio.setRolling(moving && !p.sneak);
   });
   if (me().dead) audio.setRolling(false);
   followCamera();
@@ -767,7 +793,7 @@ function drawWorld() {
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
     drawTrail(p);
-    ctx.globalAlpha = p.alpha;
+    ctx.globalAlpha = p.alpha * (p.sneak ? 0.45 : 1);
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -945,10 +971,11 @@ window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Escape' && !$('settings').hidden) { closeSettings(); return; }
   if (e.code === 'Escape') { if (S.mode === 'playing' && !S.coopMenu) pauseGame(); else resumeGame(); return; }
+  if (e.code === 'Space') { S.sneakKey = true; e.preventDefault(); return; }
   if (GAME_KEYS.has(e.code)) { S.keys.add(e.code); e.preventDefault(); }
 });
-window.addEventListener('keyup', (e) => S.keys.delete(e.code));
-window.addEventListener('blur', () => { S.keys.clear(); if (!inCoop()) pauseGame(); });
+window.addEventListener('keyup', (e) => { S.keys.delete(e.code); if (e.code === 'Space') S.sneakKey = false; });
+window.addEventListener('blur', () => { S.keys.clear(); S.sneakKey = false; if (!inCoop()) pauseGame(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && !inCoop()) pauseGame(); });
 window.addEventListener('pointerdown', () => audio.start());
 window.addEventListener('resize', resize);
@@ -970,6 +997,7 @@ function joyEnd() { Object.assign(S.joy, { id: -1, kx: 0, ky: 0, vx: 0, vy: 0 })
 
 canvas.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'mouse' || S.joy.id !== -1 || S.mode !== 'playing') return;
+  if (S.water && e.timeStamp - S.lastTap < 350) { S.sneakLatch = !S.sneakLatch; S.lastTap = 0; } else S.lastTap = e.timeStamp;
   canvas.setPointerCapture(e.pointerId);
   S.joy.id = e.pointerId; S.joy.ox = e.clientX / S.view.scale; S.joy.oy = e.clientY / S.view.scale;
   joyMove(e);

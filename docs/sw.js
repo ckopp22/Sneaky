@@ -1,4 +1,4 @@
-const CACHE = 'sneaky-v17';
+const CACHE = 'sneaky-v18';
 const FILES = [
  "./",
  "index.html",
@@ -95,6 +95,7 @@ const FILES = [
  "assets/audio/music2.mp3",
  "assets/audio/music3.mp3",
  "assets/audio/rolling.mp3",
+ "assets/audio/water.mp3",
  "assets/audio/win.mp3",
  "assets/levels/level1.json",
  "assets/levels/level10.json",
@@ -135,6 +136,16 @@ const FILES = [
  "assets/levels/level6.json",
  "assets/levels/level7.json",
  "assets/levels/level8.json",
+ "assets/levels/level61.json",
+ "assets/levels/level62.json",
+ "assets/levels/level63.json",
+ "assets/levels/level64.json",
+ "assets/levels/level65.json",
+ "assets/levels/level66.json",
+ "assets/levels/level67.json",
+ "assets/levels/level68.json",
+ "assets/levels/level69.json",
+ "assets/levels/level70.json",
  "assets/levels/level9.json"
 ];
 
