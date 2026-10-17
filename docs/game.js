@@ -1122,14 +1122,14 @@ function drawWorld() {
   }
   for (const v of S.visions) {
     if (!v.dead && Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) {
-      if (v.kind === 'guard' && !v.turret) drawTrail(v, '#ff2626', 7, 1, 650);
+      if (v.kind === 'guard' && !v.turret) drawTrail(v, '#ff2626', 7, 1, S.chaseAll ? 250 : 650);
       drawVision(v);
     }
   }
   for (const d of S.drones) drawVision(d);
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
-    drawTrail(p, p.color, C.PLAYER_R, p.alpha, S.mini ? 1100 : 350);
+    drawTrail(p, p.color, C.PLAYER_R, p.alpha, S.mini ? (S.mini.type === 'fly' ? 1100 : 150) : 350);
     ctx.globalAlpha = p.alpha * (p.sneak ? 0.45 : 1);
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
@@ -1145,7 +1145,7 @@ function drawWorld() {
   }
   for (const b of S.bots) {
     if (b.dead) continue;
-    drawTrail(b, '#ffb36b', C.PLAYER_R, 1, 300);
+    drawTrail(b, '#ffb36b', C.PLAYER_R, 1, 120);
     ctx.fillStyle = '#ffb36b'; ctx.beginPath(); ctx.arc(b.x, b.y, C.PLAYER_R, 0, TAU); ctx.fill();
   }
   ctx.fillStyle = '#ffd94d';
