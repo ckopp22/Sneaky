@@ -653,12 +653,15 @@ function drawVision(v) {
     ctx.closePath(); ctx.fill();
   }
   if (v.kind === 'guard') {
-    ctx.fillStyle = C.GUARD; ctx.shadowColor = 'rgba(255,38,38,0.8)'; ctx.shadowBlur = 14; ctx.beginPath();
+    const hz = ctx.createRadialGradient(0, 0, 4, 0, 0, 34);
+    hz.addColorStop(0, 'rgba(255,38,38,0.4)'); hz.addColorStop(1, 'rgba(255,38,38,0)');
+    ctx.fillStyle = hz; ctx.beginPath(); ctx.arc(0, 0, 34, 0, TAU); ctx.fill();
+    ctx.fillStyle = C.GUARD; ctx.beginPath();
     for (let i = 0; i < 16; i++) {
       const r = i % 2 === 0 ? 15 : 5, a = v.ang + Math.PI * i / 8;
       ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
-    ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.closePath(); ctx.fill();
   } else {
     ctx.fillStyle = v.active ? C.LAMP_ON : C.LAMP_OFF;
     ctx.beginPath(); ctx.arc(0, 0, 5, 0, TAU); ctx.fill();
@@ -697,7 +700,7 @@ function drawWorld() {
   drawMechanics();
   for (const v of S.visions) {
     if (Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) {
-      if (v.kind === 'guard') drawTrail(v, '#ff2626', 11, 1);
+      if (v.kind === 'guard') drawTrail(v, '#ff2626', 7, 1, 650);
       drawVision(v);
     }
   }
@@ -724,27 +727,36 @@ function drawWorld() {
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   ctx.drawImage(IMG.vignette, 0, 0, w, h);
+  ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
+  const wrap = (text) => {
+    const lines = []; let cur = '';
+    for (const word of text.split(' ')) {
+      if (cur && ctx.measureText(`${cur} ${word}`).width > w - 48) { lines.push(cur); cur = word; } else cur = cur ? `${cur} ${word}` : word;
+    }
+    return [...lines, cur];
+  };
   if (me().dead && S.mode === 'playing') {
-    ctx.fillStyle = 'rgba(232,238,250,0.9)'; ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(S.cpActive ? 'You were spotted. It\u2019s up to your partner to finish the level.' : 'You were spotted. Get your partner to the checkpoint!', w / 2, h - 24);
+    ctx.fillStyle = 'rgba(232,238,250,0.9)';
+    const ls = wrap(S.cpActive ? 'You were spotted. It\u2019s up to your partner to finish the level.' : 'You were spotted. Get your partner to the checkpoint!');
+    ls.forEach((l, i) => ctx.fillText(l, w / 2, h - 24 - (ls.length - 1 - i) * 20));
   }
   if (S.hint && S.hintT > 0 && S.mode === 'playing') {
-    ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
-    const tw = ctx.measureText(S.hint).width + 32;
-    ctx.fillStyle = 'rgba(10,13,20,0.75)'; ctx.fillRect(w / 2 - tw / 2, h - 86, tw, 34);
-    ctx.fillStyle = '#e8eefa'; ctx.fillText(S.hint, w / 2, h - 64);
+    const ls = wrap(S.hint), tw = Math.max(...ls.map((l) => ctx.measureText(l).width)) + 32, th = ls.length * 20 + 14, top = h - 52 - th;
+    ctx.fillStyle = 'rgba(10,13,20,0.75)'; ctx.fillRect(w / 2 - tw / 2, top, tw, th);
+    ctx.fillStyle = '#e8eefa';
+    ls.forEach((l, i) => ctx.fillText(l, w / 2, top + 24 + i * 20));
   }
   drawJoystick();
 }
 
-function drawTrail(p, color = p.color, r = C.PLAYER_R, alpha = p.alpha) {
+function drawTrail(p, color = p.color, r = C.PLAYER_R, alpha = p.alpha, life = 350) {
   const now = performance.now(), t = p.trail || (p.trail = []), last = t[t.length - 1];
   if (last && Math.hypot(p.x - last.x, p.y - last.y) > 40) t.length = 0;
   if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) t.push({ x: p.x, y: p.y, t: now });
-  while (t.length && now - t[0].t > 350) t.shift();
+  while (t.length && now - t[0].t > life) t.shift();
   ctx.fillStyle = color;
   for (const q of t) {
-    const f = 1 - (now - q.t) / 350;
+    const f = 1 - (now - q.t) / life;
     ctx.globalAlpha = alpha * f * 0.4;
     ctx.beginPath(); ctx.arc(q.x, q.y, r * (0.4 + 0.5 * f), 0, TAU); ctx.fill();
   }
