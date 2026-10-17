@@ -214,7 +214,7 @@ function updateShooters(dt) {
     const d = S.drones[i], nx = d.bx + d.vx * dt, ny = d.by + d.vy * dt;
     if (raycast(d.bx, d.by, nx, ny)) { S.drones.splice(i, 1); continue; }
     d.bx = nx; d.by = ny; d.trav += d.spd * dt;
-    const off = C.DRONE_SWAY * Math.min(1, d.trav / 200) * Math.sin(d.trav / 35), sx = nx - d.vy / d.spd * off, sy = ny + d.vx / d.spd * off;
+    const off = S.droneSway * Math.min(1, d.trav / 200) * Math.sin(d.trav / 35), sx = nx - d.vy / d.spd * off, sy = ny + d.vx / d.spd * off;
     const inWall = S.solid.some((w) => sx >= w.x && sx <= w.x + w.w && sy >= w.y && sy <= w.y + w.h);
     d.x = inWall ? nx : sx; d.y = inWall ? ny : sy;
   }
@@ -486,6 +486,7 @@ async function loadLevel(id, coop = false) {
   S.remoteInput = { x: 0, y: 0 };
   S.coopMenu = false;
   S.drones = [];
+  S.droneSway = data.droneSway ?? C.DRONE_SWAY;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
   S.zoom = coop ? C.ZOOM_COOP : C.ZOOM_SOLO;
@@ -773,6 +774,7 @@ function drawWorld() {
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   for (const d of S.drones) {
+    ctx.save(); ctx.translate(ox, oy); drawTrail(d, '#ffe9a0', 7, 1, 700); ctx.restore();
     const gr = 32, dxp = d.x + ox, dyp = d.y + oy;
     ctx.drawImage(IMG.glow, dxp - gr, dyp - gr, gr * 2, gr * 2);
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(dxp, dyp, 3.5, 0, TAU); ctx.fill();

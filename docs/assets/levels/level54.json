@@ -198,5 +198,6 @@
  ],
  "lights": [],
  "diff": 1.0,
- "hint": ""
+ "hint": "",
+ "droneSway": 0
 }
