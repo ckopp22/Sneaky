@@ -319,7 +319,7 @@ function updateShooters(dt) {
     if (d.life !== undefined && (d.life -= dt) <= 0) { S.drones.splice(i, 1); continue; }
     if (!S.droneSway && d.spd && !d.straight) {
       let tgt = null, best = d.lock ? Infinity : C.DRONE_LOCK;
-      for (const p of S.players) {
+      for (const p of S.royale ? [...S.players, ...S.bots] : S.players) {
         const dist = Math.hypot(p.x - d.bx, p.y - d.by);
         if (!p.dead && p.invuln <= 0 && dist < best && (d.lock || !raycast(d.bx, d.by, p.x, p.y))) { best = dist; tgt = p; }
       }
@@ -626,7 +626,7 @@ function royaleData(coop) {
   const slots = Array.from({ length: 10 }, (_, i) => [Math.round(cx + 13 * Math.cos(TAU * i / 10 - Math.PI / 2)), Math.round(cy + 10 * Math.sin(TAU * i / 10 - Math.PI / 2))]);
   const humans = coop ? [0, 5] : [0];
   const d = { id: 'royale', name: 'Battle Royale', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: 'royale', walls,
-    bots: slots.filter((_, i) => !humans.includes(i)), hint: 'Last one standing wins! Double-tap or press SPACE to shoot. Stay inside the red ring.' };
+    bots: slots.filter((_, i) => !humans.includes(i)), hint: 'Last one standing wins! Double-tap or press SPACE to shoot. Stay inside the red ring and watch out for the drones.' };
   if (coop) d.playerStarts = humans.map((i) => slots[i]); else d.playerStart = slots[0];
   return d;
 }
@@ -687,7 +687,7 @@ async function loadLevel(id, coop = false) {
   S.fx = []; S.fxOut = []; S.plus = []; S.plusOut = []; S.close = 0;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.royale = data.mini === 'royale'; S.results = null;
-  S.bots = (data.bots ?? []).map((a) => ({ ...at(a), dead: false, cd: rand(1, 3), strafe: 1, wt: 0 }));
+  S.bots = (data.bots ?? []).map((a) => ({ ...at(a), dead: false, invuln: 0, cd: rand(1, 3), strafe: 1, wt: 0 }));
   S.zone = { r: ROYALE_R0 }; S.alive = S.players.length + S.bots.length;
   S.shoot = !!data.shoot || S.royale; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
@@ -801,6 +801,21 @@ function updateRoyale(dt) {
   const t = S.mini.t, cx = S.map.w / 2, cy = S.map.h / 2;
   S.zone.r = t < 20 ? ROYALE_R0 : Math.max(90, ROYALE_R0 - (ROYALE_R0 - 90) * (t - 20) / 130);
   updateBots(dt);
+  const fighters = [...S.players, ...S.bots].filter((f) => !f.dead);
+  // three drones always hunt the nearest fighter, humans and bots alike
+  if (t > 4 && S.drones.length < 3 && fighters.length) {
+    for (let tries = 0; tries < 30; tries++) {
+      const x = rand(60, S.map.w - 60), y = rand(60, S.map.h - 60);
+      if (S.solid.some((w) => x > w.x - 12 && x < w.x + w.w + 12 && y > w.y - 12 && y < w.y + w.h + 12) || fighters.some((f) => Math.hypot(f.x - x, f.y - y) < 400)) continue;
+      S.drones.push(Object.assign(makeDrone(x, y, Math.atan2(S.map.h / 2 - y, S.map.w / 2 - x), 85), { lock: true, turn: 1.0, active: false }));
+      break;
+    }
+  }
+  const dspd = Math.min(85 + t * 0.3, 125);
+  for (const d of S.drones) {
+    d.spd = dspd;
+    for (const f of fighters) if (!f.dead && f.invuln <= 0 && Math.hypot(f.x - d.x, f.y - d.y) < C.PLAYER_R + 7) { explode(f.x, f.y); killFighter(f); }
+  }
   for (const f of [...S.players, ...S.bots]) {
     if (f.dead) continue;
     if (Math.hypot(f.x - cx, f.y - cy) > S.zone.r) { if ((f.out = (f.out || 0) + dt) > 2.5) killFighter(f); } else f.out = Math.max(0, (f.out || 0) - dt);
@@ -1716,7 +1731,7 @@ function applySnapshot(m) {
   if (m.d) {
     S.drones = m.d.map(([x, y, seen], i) => {
       const o = S.drones[i] || makeDrone(x, y, 0, 0);
-      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0, active: !(S.fly || S.chaseAll) });
+      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0, active: !(S.fly || S.chaseAll || S.royale) });
     });
   }
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
