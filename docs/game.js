@@ -6,7 +6,7 @@ const C = {
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
+  GRACE: 0.3, CATCH_TIME: 1.1, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -500,7 +500,7 @@ function revive(p, i) {
 }
 
 function killPlayer(i) {
-  if (S.players.length === 1) { endLevel(false); return; }
+  if (S.players.length === 1) { S.mode = 'catching'; S.catchT = 0; audio.setRolling(false); audio.playAlert(); return; }
   const p = S.players[i];
   if (p.dead) return;
   p.dead = true;
@@ -552,9 +552,10 @@ function finishLevel(won) {
     audio.playWin();
     if (!inCoop() && S.level > (store.get().highest ?? 0)) store.set({ highest: S.level });
     if (inCoop() && net.role === 'host' && S.level > (store.get().coopHighest ?? 0)) store.set({ coopHighest: S.level });
-  } else {
+  } else if (!S.caught) {
     audio.playAlert();
   }
+  S.caught = false;
   const coop = inCoop();
   const total = coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT;
   const beatAll = won && S.level === total && (DEV || cleared >= total - 1);
@@ -729,6 +730,13 @@ function drawWorld() {
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   ctx.drawImage(IMG.vignette, 0, 0, w, h);
+  if (S.mode === 'catching') {
+    const k = Math.sin(Math.PI * S.catchT / C.CATCH_TIME), z = 1 + 0.25 * k;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(canvas, canvas.width * (1 - z) / 2, canvas.height * (1 - z) / 2, canvas.width * z, canvas.height * z);
+    ctx.fillStyle = `rgba(255,255,255,${0.35 * k})`; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+  }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
   const wrap = (text) => {
     const lines = []; let cur = '';
@@ -1179,8 +1187,9 @@ function frame(now) {
   } else {
     acc = 0;
   }
+  if (S.mode === 'catching' && (S.catchT += dt) >= C.CATCH_TIME) { S.caught = true; endLevel(false); }
   if (S.mode === 'menu') drawMenuGuard(now);
-  if (S.goal && ['playing', 'paused', 'won', 'failed'].includes(S.mode)) drawWorld();
+  if (S.goal && ['catching', 'playing', 'paused', 'won', 'failed'].includes(S.mode)) drawWorld();
 }
 
 async function boot() {
