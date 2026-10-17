@@ -861,13 +861,12 @@ function drawWorld() {
 function drawTrail(p, color = p.color, r = C.PLAYER_R, alpha = p.alpha, life = 350) {
   const now = performance.now(), t = p.trail || (p.trail = []), last = t[t.length - 1];
   if (last && Math.hypot(p.x - last.x, p.y - last.y) > 40) t.length = 0;
-  if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) t.push({ x: p.x, y: p.y, t: now });
+  if (!last || Math.hypot(p.x - last.x, p.y - last.y) > (p.sneak ? 1.2 : 3)) t.push({ x: p.x, y: p.y, t: now });
   while (t.length && now - t[0].t > life) t.shift();
-  if (p.sneak) { t.length = 0; return; }
   ctx.fillStyle = color;
   for (const q of t) {
     const f = 1 - (now - q.t) / life;
-    ctx.globalAlpha = alpha * f * 0.4;
+    ctx.globalAlpha = alpha * f * 0.4 * (p.sneak ? 0.45 : 1);
     ctx.beginPath(); ctx.arc(q.x, q.y, r * (0.4 + 0.5 * f), 0, TAU); ctx.fill();
   }
   ctx.globalAlpha = 1;
