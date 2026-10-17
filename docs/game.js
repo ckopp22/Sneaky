@@ -1184,12 +1184,19 @@ function drawWorld() {
     ctx.globalAlpha = 1;
     if (S.shoot && !p.dead) {
       const cd = p.cd || 0;
-      ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(255,217,77,0.25)';
+      ctx.lineWidth = S.royale ? 1.3 : 2.5; ctx.strokeStyle = 'rgba(255,217,77,0.25)';
       ctx.beginPath(); ctx.arc(p.x, p.y, 17, 0, TAU); ctx.stroke();
       ctx.strokeStyle = '#ffd94d';
       if (cd <= 0) { ctx.shadowColor = '#ffd94d'; ctx.shadowBlur = 8; }
       ctx.beginPath(); ctx.arc(p.x, p.y, 17, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - cd / C.SHOT_CD)); ctx.stroke();
       ctx.shadowBlur = 0;
+      if (S.royale && p.face) {
+        const a = Math.atan2(p.face.y, p.face.x);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
+        ctx.fillStyle = cd <= 0 ? '#ffd94d' : 'rgba(255,217,77,0.45)';
+        ctx.beginPath(); ctx.moveTo(28, 0); ctx.lineTo(20, -5); ctx.lineTo(20, 5); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
     }
   }
   const nowt = performance.now();
