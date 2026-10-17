@@ -8,7 +8,7 @@ const C = {
     'Dogleg', 'Teardrop', 'Figure Eight', 'Wave Cave', 'Horseshoe', 'Pods', 'Lightning', 'Roots', 'Sunburst', 'Grand Vault',
     'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_SWAY: 62, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
+  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -211,7 +211,19 @@ function updateShooters(dt) {
     if (s.t >= s.every) { s.t = 0; v.windup = false; S.drones.push(makeDrone(v.x, v.y, v.ang + (v.sway || 0), s.speed)); }
   }
   for (let i = S.drones.length - 1; i >= 0; i--) {
-    const d = S.drones[i], nx = d.bx + d.vx * dt, ny = d.by + d.vy * dt;
+    const d = S.drones[i];
+    if (!S.droneSway && d.spd) {
+      let tgt = null, best = C.DRONE_LOCK;
+      for (const p of S.players) {
+        const dist = Math.hypot(p.x - d.bx, p.y - d.by);
+        if (!p.dead && p.invuln <= 0 && dist < best && !raycast(d.bx, d.by, p.x, p.y)) { best = dist; tgt = p; }
+      }
+      if (tgt) {
+        const cur = Math.atan2(d.vy, d.vx), a = cur + clamp(angleDiff(cur, Math.atan2(tgt.y - d.by, tgt.x - d.bx)), -C.DRONE_TURN * dt, C.DRONE_TURN * dt);
+        d.vx = Math.cos(a) * d.spd; d.vy = Math.sin(a) * d.spd; d.ang = a;
+      }
+    }
+    const nx = d.bx + d.vx * dt, ny = d.by + d.vy * dt;
     if (raycast(d.bx, d.by, nx, ny)) { S.drones.splice(i, 1); continue; }
     d.bx = nx; d.by = ny; d.trav += d.spd * dt;
     const off = S.droneSway * Math.min(1, d.trav / 200) * Math.sin(d.trav / 35), sx = nx - d.vy / d.spd * off, sy = ny + d.vx / d.spd * off;
@@ -486,7 +498,7 @@ async function loadLevel(id, coop = false) {
   S.remoteInput = { x: 0, y: 0 };
   S.coopMenu = false;
   S.drones = [];
-  S.droneSway = data.droneSway ?? C.DRONE_SWAY;
+  S.droneSway = data.droneSway ?? 0;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
   S.zoom = coop ? C.ZOOM_COOP : C.ZOOM_SOLO;

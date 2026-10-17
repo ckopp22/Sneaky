@@ -174,5 +174,6 @@
  ],
  "lights": [],
  "diff": 1.0,
- "hint": "Time your crossing between shots."
+ "hint": "Time your crossing between shots.",
+ "droneSway": 62
 }
