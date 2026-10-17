@@ -1,4 +1,4 @@
-const CACHE = 'sneaky-v21';
+const CACHE = 'sneaky-v22';
 const FILES = [
  "./",
  "index.html",
