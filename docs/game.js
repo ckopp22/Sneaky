@@ -1,16 +1,17 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 80, COOP_LEVEL_COUNT: 70, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 90, COOP_LEVEL_COUNT: 80, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon',
     'Dogleg', 'Teardrop', 'Figure Eight', 'Wave Cave', 'Horseshoe', 'Pods', 'Lightning', 'Roots', 'Sunburst', 'Grand Vault',
     'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet',
     'Duet Shallows', 'Decoy', 'Wet Gate', 'Two Reeds', 'Tide Pair', 'Lure Left', 'Lagoon Duo', 'Gate Current', 'Deep Pair', 'Abyss Duo',
-    'Lights Out', 'Open Floor', 'Crowd', 'Four Corners', 'Wide Open', 'Patrol Ring', 'Big Hall', 'Cross Fire', 'Full House', 'Alarm Bells'], STEP: 1 / 60,
+    'Lights Out', 'Open Floor', 'Crowd', 'Four Corners', 'Wide Open', 'Patrol Ring', 'Big Hall', 'Cross Fire', 'Full House', 'Alarm Bells',
+    'Duo Aim', 'Cover Fire', 'Back to Back', 'Two Shots', 'Overwatch', 'Clear the Hall', 'Pair Shot', 'Hot Lead', 'Standoff', 'Final Volley'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
+  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, SHOT_CD: 2, BULLET_SPEED: 340, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -210,6 +211,7 @@ function makeDrone(x, y, ang, speed) {
 
 function updateShooters(dt) {
   for (const v of S.visions) {
+    if (v.dead) continue;
     if (S.alarm && v.kind === 'guard' && !v.turret && !v.shoot) v.shoot = { every: 3.5, speed: C.DRONE_SPEED, t: Math.random() * 3 };
     const s = v.shoot;
     if (!s) continue;
@@ -488,6 +490,7 @@ function hunt(g, dt) {
 }
 
 function updateVision(v, dt) {
+  if (v.dead) { v.poly = []; v.seen = 0; return []; }
   if (v.kind === 'guard') {
     if (!v.turret) {
       if (!((S.water || S.alarm) && hunt(v, dt))) { listen(v, dt); patrol(v, dt); }
@@ -536,7 +539,7 @@ async function loadLevel(id, coop = false) {
   S.players = coop
     ? (data.playerStarts ?? [[0, 0], [0, 0]]).map((a, i) => ({ ...(data.playerStarts ? at(a) : { x: sx, y: sy + (i ? 11 : -11) }), color: i ? C.PLAYER2 : C.PLAYER }))
     : [{ x: sx, y: sy, color: C.PLAYER }];
-  S.players.forEach((p) => Object.assign(p, { alpha: 1, dead: false, invuln: 0, respawnT: 0 }));
+  S.players.forEach((p) => Object.assign(p, { alpha: 1, dead: false, invuln: 0, respawnT: 0, cd: 0, face: { x: 1, y: 0 } }));
   S.checkpoint = data.checkpoint ? rect(data.checkpoint.rect) : null;
   S.cpActive = false;
   S.hint = data.hint ?? ''; S.hintT = 8;
@@ -547,6 +550,7 @@ async function loadLevel(id, coop = false) {
   S.droneSway = data.droneSway ?? 0;
   S.water = !!data.water; audio.water = S.water;
   S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
+  S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
@@ -605,11 +609,35 @@ function killPlayer(i) {
   audio.playAlert();
 }
 
+function spawnBullet(p, d) {
+  S.bullets.push({ x: p.x + d.x * 14, y: p.y + d.y * 14, vx: d.x * C.BULLET_SPEED, vy: d.y * C.BULLET_SPEED, life: 1.6 });
+}
+
+function tryFire() {
+  const p = me();
+  if (!S.shoot || S.mode !== 'playing' || p.dead || (p.cd || 0) > 0) return;
+  p.cd = C.SHOT_CD;
+  if (inCoop() && net.role === 'guest') netSend({ t: 'f', x: p.face.x, y: p.face.y }); else spawnBullet(p, p.face);
+}
+
+function updateBullets(dt) {
+  for (let i = S.bullets.length - 1; i >= 0; i--) {
+    const b = S.bullets[i], nx = b.x + b.vx * dt, ny = b.y + b.vy * dt;
+    b.life -= dt;
+    if (b.life <= 0 || raycast(b.x, b.y, nx, ny)) { S.bullets.splice(i, 1); continue; }
+    b.x = nx; b.y = ny;
+    const g = S.visions.find((v) => v.kind === 'guard' && !v.dead && Math.hypot(v.x - nx, v.y - ny) < 14);
+    if (g) { g.dead = true; g.poly = []; g.seen = 0; S.kills++; audio.playKey(); S.bullets.splice(i, 1); }
+  }
+}
+
 function step(dt) {
   S.players.forEach((p, i) => {
     if (p.dead) return;
     const dir = i === S.me ? inputVector() : S.remoteInput;
     const moving = dir.x !== 0 || dir.y !== 0;
+    if (moving) { const l = Math.hypot(dir.x, dir.y); p.face = { x: dir.x / l, y: dir.y / l }; }
+    p.cd = Math.max(0, (p.cd || 0) - dt);
     p.sneak = S.water && (i === S.me ? S.sneakKey || S.sneakLatch : S.remoteSneak);
     p.noisy = S.water && moving && !p.sneak;
     movePlayer(p, dir, dt);
@@ -618,7 +646,8 @@ function step(dt) {
   if (me().dead) audio.setRolling(false);
   followCamera();
   updateMechanics();
-  if (S.players.some((p) => !p.dead && touchesRect(p, S.goal))) return endLevel(true);
+  updateBullets(dt);
+  if (S.kills >= S.need && S.players.some((p) => !p.dead && touchesRect(p, S.goal))) return endLevel(true);
   if (S.checkpoint && !S.cpActive && S.players.some((p) => !p.dead && touchesRect(p, S.checkpoint))) {
     S.cpActive = true;
     S.players.forEach((p, i) => { if (p.dead) revive(p, i); });
@@ -644,7 +673,7 @@ function step(dt) {
   }
   droneHit.forEach((i) => spotted.add(i));
   for (const v of S.visions) {
-    if (v.kind !== 'guard' || v.turret) continue;
+    if (v.kind !== 'guard' || v.turret || v.dead) continue;
     S.players.forEach((p, i) => {
       if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - v.x, p.y - v.y) < C.PLAYER_R + 10) spotted.add(i);
     });
@@ -808,8 +837,9 @@ function drawWorld() {
   }
   if (ga > 0) {
     ctx.globalAlpha = ga;
-    ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
-    ctx.fillStyle = C.GOAL; ctx.fillRect(g.x, g.y, g.w, g.h);
+    const locked = S.kills < S.need;
+    if (!locked) ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
+    ctx.fillStyle = locked ? 'rgba(255,90,90,0.25)' : C.GOAL; ctx.fillRect(g.x, g.y, g.w, g.h);
     ctx.globalAlpha = 1;
   }
   const cp = S.checkpoint;
@@ -822,7 +852,7 @@ function drawWorld() {
   }
   drawMechanics();
   for (const v of S.visions) {
-    if (Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) {
+    if (!v.dead && Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) {
       if (v.kind === 'guard' && !v.turret) drawTrail(v, '#ff2626', 7, 1, 650);
       drawVision(v);
     }
@@ -834,7 +864,18 @@ function drawWorld() {
     ctx.globalAlpha = p.alpha * (p.sneak ? 0.45 : 1);
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
+    if (S.shoot && !p.dead) {
+      const cd = p.cd || 0;
+      ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(255,217,77,0.25)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 17, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#ffd94d';
+      if (cd <= 0) { ctx.shadowColor = '#ffd94d'; ctx.shadowBlur = 8; }
+      ctx.beginPath(); ctx.arc(p.x, p.y, 17, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - cd / C.SHOT_CD)); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
   }
+  ctx.fillStyle = '#ffd94d';
+  for (const b of S.bullets) { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, TAU); ctx.fill(); }
   ctx.restore();
   // ambient darkness with a glow around the player
   lctx.setTransform(dpr * scale / 2, 0, 0, dpr * scale / 2, 0, 0);
@@ -877,6 +918,7 @@ function drawWorld() {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
+  if (S.shoot && S.need) { ctx.fillStyle = S.kills >= S.need ? '#6effab' : '#ffd94d'; ctx.fillText(`Enemies down: ${S.kills}/${S.need}`, w / 2, 28); }
   const wrap = (text) => {
     const lines = []; let cur = '';
     for (const word of text.split(' ')) {
@@ -1012,7 +1054,7 @@ window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Escape' && !$('settings').hidden) { closeSettings(); return; }
   if (e.code === 'Escape') { if (S.mode === 'playing' && !S.coopMenu) pauseGame(); else resumeGame(); return; }
-  if (e.code === 'Space') { S.sneakKey = true; e.preventDefault(); return; }
+  if (e.code === 'Space') { if (S.shoot) { if (!e.repeat) tryFire(); } else S.sneakKey = true; e.preventDefault(); return; }
   if (GAME_KEYS.has(e.code)) { S.keys.add(e.code); e.preventDefault(); }
 });
 window.addEventListener('keyup', (e) => { S.keys.delete(e.code); if (e.code === 'Space') S.sneakKey = false; });
@@ -1037,8 +1079,9 @@ function joyMove(e) {
 function joyEnd() { Object.assign(S.joy, { id: -1, kx: 0, ky: 0, vx: 0, vy: 0 }); }
 
 canvas.addEventListener('pointerdown', (e) => {
+  if (S.shoot && e.pointerType !== 'mouse' && S.joy.id !== -1 && S.mode === 'playing') { tryFire(); return; }
   if (e.pointerType === 'mouse' || S.joy.id !== -1 || S.mode !== 'playing') return;
-  if (S.water && e.timeStamp - S.lastTap < 350) { S.sneakLatch = !S.sneakLatch; S.lastTap = 0; } else S.lastTap = e.timeStamp;
+  if ((S.water || S.shoot) && e.timeStamp - S.lastTap < 350) { if (S.shoot) tryFire(); else S.sneakLatch = !S.sneakLatch; S.lastTap = 0; } else S.lastTap = e.timeStamp;
   canvas.setPointerCapture(e.pointerId);
   S.joy.id = e.pointerId; S.joy.ox = e.clientX / S.view.scale; S.joy.oy = e.clientY / S.view.scale;
   joyMove(e);
@@ -1189,6 +1232,9 @@ function onNetData(m) {
     const x = Number(m.x) || 0, y = Number(m.y) || 0, len = Math.hypot(x, y);
     S.remoteInput = len > 1 ? { x: x / len, y: y / len } : { x, y };
     S.remoteSneak = !!m.s;
+  } else if (m.t === 'f') {
+    const q = S.players.find((_, i) => i !== S.me), fx = Number(m.x) || 0, fy = Number(m.y) || 0, l = Math.hypot(fx, fy);
+    if (S.shoot && q && !q.dead && l > 0 && (q.cd || 0) <= 0.3) { q.cd = C.SHOT_CD; spawnBullet(q, { x: fx / l, y: fy / l }); }
   }
 }
 
@@ -1206,8 +1252,9 @@ function onPartnerLeft() {
 function snapshot() {
   const r = (n) => Math.round(n * 10) / 10;
   return { t: 's', al: S.alarm ? 1 : 0, c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
-    a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0]),
-    v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0]),
+    a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0, Math.round((p.cd || 0) * 10) / 10]),
+    v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0, v.dead ? 1 : 0]),
+    b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills,
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
 }
 
@@ -1219,10 +1266,10 @@ function applySnapshot(m) {
   if (m.o) { m.o.forEach((o, i) => { if (S.barriers[i]) S.barriers[i].open = !!o; }); }
   if (m.a) { [...S.plates, ...S.switches].forEach((t, i) => { t.on = !!m.a[i]; }); }
   updateSolids();
-  m.p.forEach(([x, y, alpha, dead, sn], i) => {
+  m.p.forEach(([x, y, alpha, dead, sn, cd], i) => {
     const q = S.players[i];
     if (!q) return;
-    if (i !== S.me) q.sneak = !!sn;
+    if (i !== S.me) { q.sneak = !!sn; q.cd = cd; }
     if (dead && !q.dead) audio.playAlert();
     q.ta = alpha; q.dead = !!dead;
     if (i === S.me) {
@@ -1241,9 +1288,12 @@ function applySnapshot(m) {
     });
   }
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
-  m.v.forEach(([x, y, ang, active, seen, windup], i) => {
+  S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
+  if (m.kl !== undefined) S.kills = m.kl;
+  m.v.forEach(([x, y, ang, active, seen, windup, dead], i) => {
     const v = S.visions[i];
     if (!v) return;
+    v.dead = !!dead;
     if (v.tx === undefined) { v.x = x; v.y = y; v.ang = ang; }
     Object.assign(v, { tx: x, ty: y, tang: ang, active: !!active, seen: seen ? 1 : 0, windup: !!windup });
   });
@@ -1252,6 +1302,8 @@ function applySnapshot(m) {
 function guestStep(dt) {
   const dir = me().dead ? { x: 0, y: 0 } : inputVector(), k = 1 - Math.exp(-dt * 20);
   me().sneak = S.water && (S.sneakKey || S.sneakLatch);
+  me().cd = Math.max(0, (me().cd || 0) - dt);
+  if (dir.x || dir.y) { const l = Math.hypot(dir.x, dir.y); me().face = { x: dir.x / l, y: dir.y / l }; }
   if (!me().dead) movePlayer(me(), dir, dt);
   audio.setRolling((dir.x !== 0 || dir.y !== 0) && !me().sneak);
   S.players.forEach((q, i) => {
