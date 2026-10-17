@@ -1,7 +1,7 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 40, COOP_LEVEL_COUNT: 30, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 50, COOP_LEVEL_COUNT: 30, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon'], STEP: 1 / 60,
