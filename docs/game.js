@@ -520,10 +520,10 @@ function spawnDefender() {
 
 function hunt(g, dt) {
   const near = S.players.filter((q) => !q.dead && q.invuln <= 0).sort((a, b) => Math.hypot(a.x - g.x, a.y - g.y) - Math.hypot(b.x - g.x, b.y - g.y))[0];
-  const p = g.defender ? near && Math.hypot(near.x - g.home.x, near.y - g.home.y) < 170 && near : S.alarm ? near : S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
+  const p = g.defender ? near && Math.hypot(near.x - g.home.x, near.y - g.home.y) < 170 && near : S.alarm || S.chaseAll ? near : S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
   if (p) {
     let t = { x: p.x, y: p.y };
-    if (S.alarm) {
+    if (S.alarm || S.chaseAll) {
       const gs = S.visions.filter((v) => v.kind === 'guard' && !v.turret && !v.defender), a = TAU * gs.indexOf(g) / gs.length;
       const rad = clamp((Math.hypot(p.x - g.x, p.y - g.y) - 50) * 0.6, 0, 110);
       const o = { x: clamp(p.x + Math.cos(a) * rad, 40, S.map.w - 40), y: clamp(p.y + Math.sin(a) * rad, 40, S.map.h - 40) };
@@ -541,9 +541,9 @@ function hunt(g, dt) {
   if (dist <= 2) { g.route.shift(); if (!g.route.length) g.chaseLeft = Math.min(g.chaseLeft, 0); }
   else {
     turnToward(g, Math.atan2(dy, dx), dt * 2);
-    const move = Math.min(g.speed * (S.alarm ? 2 : 1.6) * dt, dist);
+    const move = Math.min(g.speed * (S.alarm ? 2 : S.chaseAll ? 1.4 : 1.6) * dt, dist);
     g.x += dx / dist * move; g.y += dy / dist * move; g.vel = g.speed;
-    if (S.alarm) for (const o of S.visions) {
+    if (S.alarm || S.chaseAll) for (const o of S.visions) {
       if (o === g || o.kind !== 'guard' || o.turret) continue;
       const ox = g.x - o.x, oy = g.y - o.y, od = Math.hypot(ox, oy);
       if (od > 0 && od < 40) { g.x += ox / od * (40 - od) * 0.15; g.y += oy / od * (40 - od) * 0.15; }
@@ -557,7 +557,7 @@ function updateVision(v, dt) {
   if (v.dead) { v.poly = []; v.seen = 0; return []; }
   if (v.kind === 'guard') {
     if (!v.turret) {
-      if (!((S.water || S.alarm) && hunt(v, dt))) { listen(v, dt); patrol(v, dt); }
+      if (!((S.water || S.alarm || S.chaseAll) && hunt(v, dt))) { listen(v, dt); patrol(v, dt); }
       v.swayT = (v.swayT ?? Math.random() * TAU) + (v.seen > 0 ? 0 : dt * 2.4);
       v.sway = rad(C.GUARD_SWAY_DEG) * Math.sin(v.swayT);
     }
@@ -579,11 +579,13 @@ function updateVision(v, dt) {
 
 // ---------- level ----------
 function miniData(type, coop) {
-  const w = 66, h = 36, m = h / 2;
+  const fly = type === 'fly', w = fly ? 66 : 60, h = fly ? 36 : 34, m = h / 2;
   const walls = [[0, 0, w, 1], [0, h - 1, w, 1], [0, 0, 1, h], [w - 1, 0, 1, h]];
-  for (const [x, y] of [[10, 8], [24, 8], [38, 8], [52, 8], [17, 18], [45, 18], [10, 28], [24, 28], [38, 28], [52, 28]]) walls.push([x, y, 2, 2]);
-  const d = { id: type, name: 'Fly', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: type, walls,
-    hint: 'Fly anywhere and grab the stars. Drones lock on, so turn to dodge them. Red triangles show where they come from.' };
+  if (fly) for (const [x, y] of [[10, 8], [24, 8], [38, 8], [52, 8], [17, 18], [45, 18], [10, 28], [24, 28], [38, 28], [52, 28]]) walls.push([x, y, 2, 2]);
+  else for (const [x, y] of [[8, 6], [18, 6], [28, 6], [38, 6], [48, 6], [13, 16], [23, 16], [43, 16], [8, 26], [18, 26], [28, 26], [38, 26], [48, 26]]) walls.push([x, y, 2, 3]);
+  const d = { id: type, name: fly ? 'Fly' : 'Collect', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: type, walls,
+    hint: fly ? 'Fly anywhere and grab the stars. Drones lock on, so turn to dodge them. Red triangles show where they come from.'
+      : 'Grab as many coins as you can. Guards hunt you down, and more arrive the longer you last.' };
   if (coop) d.playerStarts = [[w / 2 - 1, m], [w / 2 + 1, m]]; else d.playerStart = [w / 2, m];
   return d;
 }
@@ -624,8 +626,9 @@ async function loadLevel(id, coop = false) {
   S.drones = [];
   S.droneSway = data.droneSway ?? 0;
   S.water = !!data.water; audio.water = S.water;
-  S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = data.mini ? 1 : 0;
+  S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = data.mini === 'fly' ? 1 : 0;
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
+  S.chaseAll = data.mini === 'collect';
   S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 0.7, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
@@ -687,22 +690,41 @@ function killPlayer(i) {
   audio.playAlert();
 }
 
+function makeChaser(x, y, speed = C.GUARD_SPEED) {
+  const t = S.nav.tile;
+  return makeGuard({ path: [[x / t - 0.5, y / t - 0.5]], fov: 50, range: 90, speed }, t);
+}
+
 function updateMini(dt) {
   const m = S.mini;
   if (!m) return;
   m.t += dt;
-  const t = m.t, f = S.fly;
-  f.wave = Math.max(1.6, 3.6 - t * 0.02);
-  f.count = [Math.min(1 + Math.floor(t / 40), 4), Math.min(2 + Math.floor(t / 20), 7)];
-  f.speed = [Math.min(80 + t * 0.6, 150), Math.min(100 + t * 0.8, 185)];
-  f.turn = Math.min(0.7 + t * 0.006, 1.4);
+  const t = m.t, live = S.players.filter((p) => !p.dead);
+  if (m.type === 'fly') {
+    const f = S.fly;
+    f.wave = Math.max(1.6, 3.6 - t * 0.02);
+    f.count = [Math.min(1 + Math.floor(t / 40), 4), Math.min(2 + Math.floor(t / 20), 7)];
+    f.speed = [Math.min(80 + t * 0.6, 150), Math.min(100 + t * 0.8, 185)];
+    f.turn = Math.min(0.7 + t * 0.006, 1.4);
+  } else if ((m.spawnT = (m.spawnT ?? 0) - dt) <= 0) {
+    m.spawnT = Math.max(3, 9 - t * 0.05);
+    const n = m.t < 1 ? 2 : Math.min(1 + Math.floor(t / 45), 4);
+    for (let i = 0; i < n && S.visions.length < 14; i++) {
+      for (let tries = 0; tries < 30; tries++) {
+        const x = rand(60, S.map.w - 60), y = rand(60, S.map.h - 60);
+        if (S.nav.blocked[navCell({ x, y })] || live.some((p) => Math.hypot(p.x - x, p.y - y) < 380)) continue;
+        S.visions.push(makeChaser(x, y, Math.min(C.GUARD_SPEED + t * 0.4, 90)));
+        break;
+      }
+    }
+  }
   S.coinList = S.coinList.filter((c) => !c.got);
-  const live = S.players.filter((p) => !p.dead), want = S.players.length > 1 ? 10 : 7;
+  const want = S.players.length > 1 ? 12 : 8;
   for (let tries = 0; S.coinList.length < want && tries < 60; tries++) {
     const x = rand(60, S.map.w - 60), y = rand(60, S.map.h - 60);
     if (S.walls.some((w) => x > w.x - 18 && x < w.x + w.w + 18 && y > w.y - 18 && y < w.y + w.h + 18)) continue;
     if (live.some((p) => Math.hypot(p.x - x, p.y - y) < 130)) continue;
-    S.coinList.push({ x, y, got: false, star: true });
+    S.coinList.push({ x, y, got: false, star: m.type === 'fly' });
   }
 }
 
@@ -803,7 +825,7 @@ function finishMini() {
   const key = S.mini.type + (inCoop() ? '_coop' : ''), m = store.get().mini ?? {}, score = S.coins, isBest = score > (m[key] ?? 0);
   if (isBest) store.set({ mini: { ...m, [key]: score } });
   const coop = inCoop();
-  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${score} star${score === 1 ? '' : 's'}`,
+  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${score} ${S.mini.type === 'fly' ? 'star' : 'coin'}${score === 1 ? '' : 's'}`,
     { resume: false, retry: !coop || net.role === 'host', next: false, pick: coop && net.role === 'host' });
 }
 
@@ -967,7 +989,7 @@ function drawWorld() {
   const { w, h, scale, dpr } = S.view, ox = w / 2 - S.cam.x, oy = h / 2 - S.cam.y;
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   ctx.fillStyle = C.BG; ctx.fillRect(0, 0, w, h);
-  if (S.mini) drawSpace(w, h);
+  if (S.mini?.type === 'fly') drawSpace(w, h);
   ctx.save(); ctx.translate(ox, oy);
   ctx.fillStyle = C.WALL;
   for (const r of S.walls) ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -1031,7 +1053,7 @@ function drawWorld() {
   const cr = lr * 0.55;
   lctx.drawImage(tinted, lp.x + ox - cr, lp.y + oy - cr, cr * 2, cr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  S.alarmK += ((S.alarm || S.mini ? 1 : 0) - S.alarmK) * 0.12;
+  S.alarmK += ((S.alarm || S.mini?.type === 'fly' ? 1 : 0) - S.alarmK) * 0.12;
   ctx.globalCompositeOperation = 'multiply';
   ctx.globalAlpha = 1 - S.alarmK;
   ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
@@ -1065,7 +1087,7 @@ function drawWorld() {
     ctx.beginPath(); ctx.arc(kx - 5, ky, 5, 0, TAU); ctx.stroke();
     ctx.fillRect(kx, ky - 1.25, 12, 2.5); ctx.fillRect(kx + 8, ky, 2.5, 5); ctx.fillRect(kx + 12, ky, 2.5, 4);
   }
-  if (!S.mini) ctx.drawImage(IMG.vignette, 0, 0, w, h);
+  if (S.mini?.type !== 'fly') ctx.drawImage(IMG.vignette, 0, 0, w, h);
   if (S.mini) {
     const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 120);
     for (const d of S.drones) {
@@ -1086,7 +1108,7 @@ function drawWorld() {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
-  if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`Stars: ${S.coins}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
+  if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`${S.mini.type === 'fly' ? 'Stars' : 'Coins'}: ${S.coins}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
   if (S.coinNeed) { ctx.fillStyle = S.coins >= S.coinNeed ? '#6effab' : '#ffd94d'; ctx.fillText(`Coins: ${S.coins}/${S.coinNeed}`, w / 2, 28); }
   if (S.shoot && S.need) { ctx.fillStyle = S.kills >= S.need ? '#6effab' : '#ffd94d'; ctx.fillText(`Enemies down: ${S.kills}/${S.need}`, w / 2, 28); }
   const wrap = (text) => {
@@ -1176,10 +1198,10 @@ function showMiniSelect() {
   hideAll();
   const coop = net.role === 'host', best = store.get().mini ?? {}, box = $('minibtns');
   box.textContent = '';
-  for (const [id, name, note] of [['fly', 'Fly', 'Stars & drones'], ['collect', 'Collect', 'Coming soon'], ['royale', 'Battle Royale', 'Coming soon']]) {
+  for (const [id, name, note] of [['fly', 'Fly', 'Stars & drones'], ['collect', 'Collect', 'Coins & guards'], ['royale', 'Battle Royale', 'Coming soon']]) {
     const b = document.createElement('button'), score = best[id + (coop ? '_coop' : '')];
     b.className = 'btn level';
-    if (id === 'fly') {
+    if (id !== 'royale') {
       b.textContent = `${name}\n${score ? `Best: ${score}` : note}`;
       b.onclick = () => (coop ? startCoop(id) : startLevel(id));
     } else { b.textContent = `${name}\n${note}`; b.disabled = true; }
@@ -1480,9 +1502,10 @@ function applySnapshot(m) {
     });
   }
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
+  while (S.chaseAll && S.visions.length < m.v.length) S.visions.push(makeChaser(...m.v[S.visions.length]));
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
   if (m.kl !== undefined) S.kills = m.kl;
-  if (m.cm) { S.coinList = m.cm.map(([x, y]) => ({ x, y, got: false, star: true })); if (m.cs > S.coins) audio.playCoin(); S.coins = m.cs; }
+  if (m.cm) { S.coinList = m.cm.map(([x, y]) => ({ x, y, got: false, star: S.mini.type === 'fly' })); if (m.cs > S.coins) audio.playCoin(); S.coins = m.cs; }
   if (m.cn) { m.cn.forEach((g, i) => { const c = S.coinList[i]; if (c && g && !c.got) { c.got = true; audio.playCoin(); } }); S.coins = S.coinList.filter((c) => c.got).length; }
   m.v.forEach(([x, y, ang, active, seen, windup, dead], i) => {
     const v = S.visions[i];
