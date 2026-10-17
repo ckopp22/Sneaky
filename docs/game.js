@@ -966,7 +966,7 @@ function finishMini() {
   const key = S.mini.type + (inCoop() ? '_coop' : ''), m = store.get().mini ?? {}, score = S.coins + (S.mini.type === 'fly' ? S.close : 0), isBest = score > (m[key] ?? 0);
   if (isBest) store.set({ mini: { ...m, [key]: score } });
   const coop = inCoop();
-  showPopup(`${isBest ? 'New best!' : 'Game over'}${S.mini.type === 'fly' ? '\n' : '. '}${S.mini.type === 'fly' ? `${score} point${score === 1 ? '' : 's'}\n${S.coins} star${S.coins === 1 ? '' : 's'}\n${S.close} close call${S.close === 1 ? '' : 's'}` : `${score} coin${score === 1 ? '' : 's'}`}`,
+  showPopup(`${isBest ? 'New best!' : 'Game over'}${S.mini.type === 'fly' ? '\n' : '. '}${S.mini.type === 'fly' ? `#${score} point${score === 1 ? '' : 's'}\n~(${S.coins} star${S.coins === 1 ? '' : 's'})\n~(${S.close} close call${S.close === 1 ? '' : 's'})` : `${score} coin${score === 1 ? '' : 's'}`}`,
     { resume: false, retry: !coop || net.role === 'host', next: false, pick: coop && net.role === 'host' });
 }
 
@@ -1341,7 +1341,14 @@ function drawJoystick() {
 function show(el, on) { el.hidden = !on; }
 
 function showPopup(title, buttons) {
-  $('ptitle').textContent = title;
+  const h = $('ptitle');
+  h.textContent = '';
+  for (const line of title.split('\n')) {
+    const d = document.createElement('div');
+    d.textContent = line.replace(/^[#~]/, '');
+    if (line[0] === '#') d.className = 'pbig'; else if (line[0] === '~') d.className = 'psmall';
+    h.appendChild(d);
+  }
   for (const id of ['resume', 'retry', 'next', 'pick']) show($(id), !!buttons[id]);
   $('menu').textContent = inCoop() || net.role ? 'Leave' : 'Levels';
   show($('popup'), true);
