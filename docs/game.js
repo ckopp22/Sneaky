@@ -46,7 +46,7 @@ const audio = (() => {
   const make = (name, volume, loop = false) => Object.assign(new Audio(`assets/audio/${name}.mp3`), { volume, loop });
   const a = { active: true, music: saved.music !== false, sfx: saved.sfx !== false, track: 0, started: false, rolling: false };
   const tracks = [1, 2, 3].map((n) => make(`music${n}`, 0.4));
-  const alert = make('alert', 0.63), win = make('win', 0.8), roll = make('rolling', 0.4, true);
+  const alert = make('alert', 0.63), win = make('win', 0.8), keySnd = make('key', 0.7), unlockSnd = make('unlock', 0.7), roll = make('rolling', 0.4, true);
   const level = () => (a.ducked ? 0.15 : 0.4);
   const playTrack = () => {
     const t = tracks[a.track];
@@ -58,7 +58,7 @@ const audio = (() => {
   a.start = () => {
     const ac = getAc();
     if (ac && ac.state !== 'running') ac.resume();
-    load(alert, 'alert'); load(win, 'win');
+    load(alert, 'alert'); load(win, 'win'); load(keySnd, 'key'); load(unlockSnd, 'unlock');
     if (!a.started) { a.started = true; playTrack(); }
   };
   a.duck = (on) => { a.ducked = on; tracks[a.track].volume = level(); };
@@ -92,7 +92,7 @@ const audio = (() => {
   a.setActive = (on) => {
     a.active = on;
     if (!on) {
-      for (const s of [...tracks, alert, win, roll]) s.pause();
+      for (const s of [...tracks, alert, win, keySnd, unlockSnd, roll]) s.pause();
       a.rolling = false;
     } else if (a.started && a.music) {
       tracks[a.track].play().catch(() => {});
@@ -100,6 +100,8 @@ const audio = (() => {
   };
   a.playAlert = () => play(alert, 'alert', 0.63);
   a.playWin = () => play(win, 'win', 0.8);
+  a.playKey = () => play(keySnd, 'key', 0.7);
+  a.playUnlock = () => play(unlockSnd, 'unlock', 0.7);
   a.playCelebrate = () => {
     if (!a.sfx || !a.active) return;
     try {
@@ -517,7 +519,7 @@ function updateMechanics() {
   for (const pl of S.plates) pl.on = alive.some((p) => touchesRect(p, pl));
   for (const sw of S.switches) if (!sw.on && alive.some((p) => touchesRect(p, sw))) sw.on = true;
   if (S.key && !S.keyGot && alive.some((p) => Math.hypot(p.x - S.key.x, p.y - S.key.y) < C.PLAYER_R + 12)) {
-    S.keyGot = true; S.hint = 'Key found! The door is unlocked.'; S.hintT = 4;
+    S.keyGot = true; S.hint = 'Key found! The door is unlocked.'; S.hintT = 4; audio.playKey();
   }
   for (const b of S.barriers) b.open = b.kind === 'lock' ? S.keyGot : (b.kind === 'gate' ? S.plates : S.switches).some((t) => t.id === b.id && t.on);
   updateSolids();
@@ -599,6 +601,7 @@ function finishLevel(won) {
   const cleared = (inCoop() ? store.get().coopHighest : store.get().highest) ?? 0;
   if (won) {
     audio.playWin();
+    if (S.key) audio.playUnlock();
     if (!inCoop() && S.level > (store.get().highest ?? 0)) store.set({ highest: S.level });
     if (inCoop() && net.role === 'host' && S.level > (store.get().coopHighest ?? 0)) store.set({ coopHighest: S.level });
   } else if (!S.caught) {
@@ -1140,7 +1143,7 @@ function snapshot() {
 
 function applySnapshot(m) {
   S.cpActive = !!m.c;
-  if (m.k && !S.keyGot) { S.keyGot = true; S.hint = 'Key found! The door is unlocked.'; S.hintT = 4; }
+  if (m.k && !S.keyGot) { S.keyGot = true; S.hint = 'Key found! The door is unlocked.'; S.hintT = 4; audio.playKey(); }
   if (m.o) { m.o.forEach((o, i) => { if (S.barriers[i]) S.barriers[i].open = !!o; }); }
   if (m.a) { [...S.plates, ...S.switches].forEach((t, i) => { t.on = !!m.a[i]; }); }
   updateSolids();
