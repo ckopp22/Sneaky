@@ -1,0 +1,1 @@
+{"name": "Crosswind", "size": [98, 16], "tileSize": 32, "goal": {"rect": [86, 1, 11, 14]}, "walls": [[0, 0, 98, 1], [0, 15, 98, 1], [0, 0, 1, 16], [97, 0, 1, 16]], "guards": [], "lights": [], "diff": 1.0, "hint": "", "fly": {"wave": 2.66, "count": [2, 3], "speed": [146, 220]}, "playerStarts": [[2, 6], [2, 9]], "id": 82}

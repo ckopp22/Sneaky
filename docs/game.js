@@ -1,7 +1,7 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 90, COOP_LEVEL_COUNT: 80, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 100, COOP_LEVEL_COUNT: 90, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon',
@@ -9,7 +9,8 @@ const C = {
     'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet',
     'Duet Shallows', 'Decoy', 'Wet Gate', 'Two Reeds', 'Tide Pair', 'Lure Left', 'Lagoon Duo', 'Gate Current', 'Deep Pair', 'Abyss Duo',
     'Lights Out', 'Open Floor', 'Crowd', 'Four Corners', 'Wide Open', 'Patrol Ring', 'Big Hall', 'Cross Fire', 'Full House', 'Alarm Bells',
-    'Duo Aim', 'Cover Fire', 'Back to Back', 'Two Shots', 'Overwatch', 'Clear the Hall', 'Pair Shot', 'Hot Lead', 'Standoff', 'Final Volley'], STEP: 1 / 60,
+    'Duo Aim', 'Cover Fire', 'Back to Back', 'Two Shots', 'Overwatch', 'Clear the Hall', 'Pair Shot', 'Hot Lead', 'Standoff', 'Final Volley',
+    'Wingmates', 'Formation', 'Crosswind Duo', 'Twin Flak', 'Hedge Hop', 'Close Air', 'Barrel Roll', 'Dogfight', 'Storm Front', 'Final Approach'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, SHOT_CD: 2, BULLET_SPEED: 340, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
@@ -209,7 +210,26 @@ function makeDrone(x, y, ang, speed) {
   return Object.assign(d, { kind: 'drone', ang, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, bx: x, by: y, spd: speed, trav: 0 });
 }
 
+function spawnWave(dt) {
+  const f = S.fly;
+  if (!f || S.mode !== 'playing') return;
+  f.t -= dt;
+  if (f.t > 0) return;
+  f.t = f.wave * rand(0.7, 1.3);
+  const sx = S.cam.x + S.view.w / 2 + 40, live = S.players.filter((p) => !p.dead);
+  if (!live.length || sx > S.goal.x + S.goal.w / 2) return;
+  const n = f.count[0] + Math.floor(Math.random() * (f.count[1] - f.count[0] + 1));
+  for (let i = 0; i < n; i++) {
+    const aim = Math.random() < 0.3 ? live[Math.floor(Math.random() * live.length)] : null;
+    const y = aim ? clamp(aim.y + rand(-25, 25), 48, S.map.h - 48) : rand(48, S.map.h - 48);
+    const d = makeDrone(sx + Math.random() * 140, y, Math.PI, rand(f.speed[0], f.speed[1]));
+    Object.assign(d, { straight: true, active: false });
+    S.drones.push(d);
+  }
+}
+
 function updateShooters(dt) {
+  spawnWave(dt);
   for (const v of S.visions) {
     if (v.dead) continue;
     if (S.alarm && v.kind === 'guard' && !v.turret && !v.shoot) v.shoot = { every: 3.5, speed: C.DRONE_SPEED, t: Math.random() * 3 };
@@ -221,7 +241,8 @@ function updateShooters(dt) {
   }
   for (let i = S.drones.length - 1; i >= 0; i--) {
     const d = S.drones[i];
-    if (!S.droneSway && d.spd) {
+    if (d.straight && d.bx < S.cam.x - S.view.w / 2 - 120) { S.drones.splice(i, 1); continue; }
+    if (!S.droneSway && d.spd && !d.straight) {
       let tgt = null, best = C.DRONE_LOCK;
       for (const p of S.players) {
         const dist = Math.hypot(p.x - d.bx, p.y - d.by);
@@ -550,6 +571,7 @@ async function loadLevel(id, coop = false) {
   S.droneSway = data.droneSway ?? 0;
   S.water = !!data.water; audio.water = S.water;
   S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
+  S.fly = data.fly ? { ...data.fly, t: 2 } : null;
   S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
@@ -665,7 +687,7 @@ function step(dt) {
     if (!S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); S.visions.push(spawnDefender()); }
     spotted.clear();
   }
-  if (S.alarmLevel) {
+  if (S.alarmLevel || S.fly) {
     droneHit.clear();
     for (const d of S.drones) S.players.forEach((p, i) => {
       if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - d.x, p.y - d.y) < C.PLAYER_R + 6) droneHit.add(i);
@@ -1287,7 +1309,7 @@ function applySnapshot(m) {
   if (m.d) {
     S.drones = m.d.map(([x, y, seen], i) => {
       const o = S.drones[i] || makeDrone(x, y, 0, 0);
-      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0 });
+      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0, active: !S.fly });
     });
   }
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
@@ -1321,7 +1343,7 @@ function guestStep(dt) {
   }
   for (const d of S.drones) {
     if (d.tx !== undefined) { d.x += (d.tx - d.x) * k; d.y += (d.ty - d.y) * k; }
-    updatePoly(d);
+    if (d.active) updatePoly(d); else d.poly = [];
   }
   followCamera();
 }

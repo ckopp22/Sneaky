@@ -1,0 +1,1 @@
+{"name": "Takeoff", "size": [90, 16], "tileSize": 32, "goal": {"rect": [78, 1, 11, 14]}, "walls": [[0, 0, 90, 1], [0, 15, 90, 1], [0, 0, 1, 16], [89, 0, 1, 16]], "guards": [], "lights": [], "diff": 1.0, "hint": "Fly right! Dodge the drones and reach the end zone.", "fly": {"wave": 2.8, "count": [2, 3], "speed": [140, 210]}, "playerStart": [2, 8], "id": 91}
