@@ -1152,24 +1152,26 @@ function drawWorld() {
   for (const b of S.bullets) { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, TAU); ctx.fill(); }
   ctx.restore();
   // ambient darkness with a glow around the player
-  lctx.setTransform(dpr * scale / 2, 0, 0, dpr * scale / 2, 0, 0);
-  lctx.globalCompositeOperation = 'source-over';
-  lctx.fillStyle = C.AMBIENT; lctx.fillRect(0, 0, w, h);
-  lctx.globalCompositeOperation = 'lighter';
-  const lr = 64 * C.PLAYER_LIGHT_SCALE;
-  const lp = camTarget();
-  lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
-  lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
-  lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
-  const cr = lr * 0.55;
-  lctx.drawImage(tinted, lp.x + ox - cr, lp.y + oy - cr, cr * 2, cr * 2);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
   S.alarmK += ((S.alarm || (S.mini && S.mini.type !== 'collect') ? 1 : 0) - S.alarmK) * 0.12;
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.globalAlpha = 1 - S.alarmK;
-  ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
+  if (S.alarmK < 0.99) {
+    lctx.setTransform(dpr * scale / 2, 0, 0, dpr * scale / 2, 0, 0);
+    lctx.globalCompositeOperation = 'source-over';
+    lctx.fillStyle = C.AMBIENT; lctx.fillRect(0, 0, w, h);
+    lctx.globalCompositeOperation = 'lighter';
+    const lr = 64 * C.PLAYER_LIGHT_SCALE;
+    const lp = camTarget();
+    lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
+    lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
+    lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
+    const cr = lr * 0.55;
+    lctx.drawImage(tinted, lp.x + ox - cr, lp.y + oy - cr, cr * 2, cr * 2);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = 1 - S.alarmK;
+    ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   for (const d of S.drones) {
     ctx.save(); ctx.translate(ox, oy); drawTrail(d, '#ffe9a0', 7, 1, 700); ctx.restore();
@@ -1247,13 +1249,20 @@ function drawWorld() {
 function drawTrail(p, color = p.color, r = C.PLAYER_R, alpha = p.alpha, life = 350) {
   const now = performance.now(), t = p.trail || (p.trail = []), last = t[t.length - 1];
   if (last && Math.hypot(p.x - last.x, p.y - last.y) > 40) t.length = 0;
-  if (!last || Math.hypot(p.x - last.x, p.y - last.y) > (p.sneak ? 1.2 : 3)) t.push({ x: p.x, y: p.y, t: now });
+  if (!last || Math.hypot(p.x - last.x, p.y - last.y) > (p.sneak ? 1.2 : life > 500 ? 6 : 3)) t.push({ x: p.x, y: p.y, t: now });
   while (t.length && now - t[0].t > life) t.shift();
   ctx.fillStyle = color;
-  for (const q of t) {
-    const f = 1 - (now - q.t) / life;
-    ctx.globalAlpha = alpha * f * 0.4 * (p.sneak ? 0.45 : 1);
-    ctx.beginPath(); ctx.arc(q.x, q.y, r * (0.4 + 0.5 * f), 0, TAU); ctx.fill();
+  const B = 4;
+  for (let k = 0; k < B; k++) {
+    ctx.beginPath();
+    let any = false;
+    for (const q of t) {
+      const f = 1 - (now - q.t) / life;
+      if (Math.min(B - 1, Math.floor(f * B)) !== k) continue;
+      const rr = r * (0.4 + 0.5 * f);
+      ctx.moveTo(q.x + rr, q.y); ctx.arc(q.x, q.y, rr, 0, TAU); any = true;
+    }
+    if (any) { ctx.globalAlpha = alpha * ((k + 0.5) / B) * 0.4 * (p.sneak ? 0.45 : 1); ctx.fill(); }
   }
   ctx.globalAlpha = 1;
 }
