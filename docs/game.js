@@ -966,7 +966,7 @@ function finishMini() {
   const key = S.mini.type + (inCoop() ? '_coop' : ''), m = store.get().mini ?? {}, score = S.coins + (S.mini.type === 'fly' ? S.close : 0), isBest = score > (m[key] ?? 0);
   if (isBest) store.set({ mini: { ...m, [key]: score } });
   const coop = inCoop();
-  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${S.mini.type === 'fly' ? `${score} points: ${S.coins} star${S.coins === 1 ? '' : 's'} + ${S.close} close call${S.close === 1 ? '' : 's'}` : `${score} coin${score === 1 ? '' : 's'}`}`,
+  showPopup(`${isBest ? 'New best!' : 'Game over'}${S.mini.type === 'fly' ? '\n' : '. '}${S.mini.type === 'fly' ? `${score} point${score === 1 ? '' : 's'}\n${S.coins} star${S.coins === 1 ? '' : 's'}\n${S.close} close call${S.close === 1 ? '' : 's'}` : `${score} coin${score === 1 ? '' : 's'}`}`,
     { resume: false, retry: !coop || net.role === 'host', next: false, pick: coop && net.role === 'host' });
 }
 
