@@ -1079,7 +1079,10 @@ function joyMove(e) {
 function joyEnd() { Object.assign(S.joy, { id: -1, kx: 0, ky: 0, vx: 0, vy: 0 }); }
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (S.shoot && e.pointerType !== 'mouse' && S.joy.id !== -1 && S.mode === 'playing') { tryFire(); return; }
+  if ((S.shoot || S.water) && e.pointerType !== 'mouse' && S.joy.id !== -1 && S.mode === 'playing') {
+    if (S.shoot) tryFire(); else S.sneakLatch = !S.sneakLatch;
+    return;
+  }
   if (e.pointerType === 'mouse' || S.joy.id !== -1 || S.mode !== 'playing') return;
   if ((S.water || S.shoot) && e.timeStamp - S.lastTap < 350) { if (S.shoot) tryFire(); else S.sneakLatch = !S.sneakLatch; S.lastTap = 0; } else S.lastTap = e.timeStamp;
   canvas.setPointerCapture(e.pointerId);
