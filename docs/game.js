@@ -609,14 +609,16 @@ function step(dt) {
   const spotted = new Set();
   updateShooters(dt);
   for (const v of [...S.visions, ...S.drones]) updateVision(v, dt).forEach((i) => spotted.add(i));
+  if (S.alarmLevel) {
+    if (!S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); }
+    spotted.clear();
+  }
   for (const v of S.visions) {
     if (v.kind !== 'guard' || v.turret) continue;
     S.players.forEach((p, i) => {
       if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - v.x, p.y - v.y) < C.PLAYER_R + 10) spotted.add(i);
     });
   }
-  if (S.alarmLevel && !S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); spotted.clear(); }
-  if (S.alarmLevel) spotted.clear();
   spotted.forEach(killPlayer);
   if (S.mode === 'playing' && S.players.every((p) => p.dead) && (S.failT -= dt) <= 0) endLevel(false);
 }
