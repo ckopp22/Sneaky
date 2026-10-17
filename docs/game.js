@@ -1319,7 +1319,7 @@ function drawExhaust(p) {
   while (t.length && now - t[0].t > life) t.shift();
   if (t.length < 2) return;
   const pts = [...t, { x: p.x, y: p.y, t: now }], n = pts.length, flick = 0.9 + 0.1 * Math.sin(now / 35);
-  for (const [width, rgb, a] of [[18, '255,140,40', 0.3], [11, '90,200,255', 0.55], [5, '255,255,255', 0.9]]) {
+  for (const [width, rgb, a] of [[30, '255,140,40', 0.3], [19, '90,200,255', 0.55], [9, '255,255,255', 0.9]]) {
     const left = [], right = [];
     for (let i = 0; i < n; i++) {
       const a0 = pts[Math.max(0, i - 1)], b0 = pts[Math.min(n - 1, i + 1)], dx = b0.x - a0.x, dy = b0.y - a0.y, l = Math.hypot(dx, dy) || 1;
