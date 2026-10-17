@@ -1172,7 +1172,7 @@ function drawWorld() {
   for (const d of S.drones) drawVision(d);
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
-    drawTrail(p, p.color, C.PLAYER_R, p.alpha, S.mini ? (S.mini.type === 'fly' ? 1100 : 150) : 350);
+    if (S.mini?.type === 'fly') drawExhaust(p); else drawTrail(p, p.color, C.PLAYER_R, p.alpha, S.mini ? 150 : 350);
     ctx.globalAlpha = p.alpha * (p.sneak ? 0.45 : 1);
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
@@ -1302,6 +1302,29 @@ function drawWorld() {
     ls.forEach((l, i) => ctx.fillText(l, w / 2, top + 24 + i * 20));
   }
   drawJoystick();
+}
+
+// tapered engine flame behind the ship: orange glow, blue body, white core
+function drawExhaust(p) {
+  const now = performance.now(), t = p.trail || (p.trail = []), last = t[t.length - 1], life = 420;
+  if (last && Math.hypot(p.x - last.x, p.y - last.y) > 40) t.length = 0;
+  if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 2.5) t.push({ x: p.x, y: p.y, t: now });
+  while (t.length && now - t[0].t > life) t.shift();
+  if (t.length < 2) return;
+  const pts = [...t, { x: p.x, y: p.y, t: now }], n = pts.length, flick = 0.9 + 0.1 * Math.sin(now / 35);
+  for (const [width, rgb, a] of [[18, '255,140,40', 0.3], [11, '90,200,255', 0.55], [5, '255,255,255', 0.9]]) {
+    const left = [], right = [];
+    for (let i = 0; i < n; i++) {
+      const a0 = pts[Math.max(0, i - 1)], b0 = pts[Math.min(n - 1, i + 1)], dx = b0.x - a0.x, dy = b0.y - a0.y, l = Math.hypot(dx, dy) || 1;
+      const w = width * 0.5 * Math.max(0, 1 - (now - pts[i].t) / life) * flick;
+      left.push([pts[i].x - dy / l * w, pts[i].y + dx / l * w]); right.push([pts[i].x + dy / l * w, pts[i].y - dx / l * w]);
+    }
+    ctx.beginPath();
+    left.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(${rgb},${a * p.alpha})`; ctx.fill();
+  }
 }
 
 function drawTrail(p, color = p.color, r = C.PLAYER_R, alpha = p.alpha, life = 350) {
