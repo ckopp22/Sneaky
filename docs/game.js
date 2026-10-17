@@ -235,6 +235,7 @@ function spawnWave(dt) {
   const live = S.players.filter((p) => !p.dead);
   if (!live.length) return;
   if (S.mini) {
+    if (S.drones.length >= 30) return;
     const n = f.count[0] + Math.floor(Math.random() * (f.count[1] - f.count[0] + 1)), R = Math.hypot(S.view.w, S.view.h) / 2 + 60;
     for (let i = 0; i < n; i++) {
       const c = live[Math.floor(Math.random() * live.length)];
@@ -242,7 +243,7 @@ function spawnWave(dt) {
         const a = rand(0, TAU), x = c.x + Math.cos(a) * R, y = c.y + Math.sin(a) * R;
         if (x < 50 || y < 50 || x > S.map.w - 50 || y > S.map.h - 50 || S.solid.some((w) => x > w.x - 10 && x < w.x + w.w + 10 && y > w.y - 10 && y < w.y + w.h + 10)) continue;
         const d = makeDrone(x, y, Math.atan2(c.y - y, c.x - x), rand(f.speed[0], f.speed[1]));
-        Object.assign(d, { lock: true, turn: f.turn, life: 12, active: false });
+        Object.assign(d, { lock: true, turn: f.turn, active: false });
         S.drones.push(d);
         break;
       }
@@ -288,6 +289,14 @@ function updateShooters(dt) {
       }
     }
     const nx = d.bx + d.vx * dt, ny = d.by + d.vy * dt;
+    if (d.lock) {
+      // locked drones slide along walls instead of vanishing
+      if (!raycast(d.bx, d.by, nx, ny)) { d.bx = nx; d.by = ny; }
+      else if (!raycast(d.bx, d.by, nx, d.by)) d.bx = nx;
+      else if (!raycast(d.bx, d.by, d.bx, ny)) d.by = ny;
+      d.x = d.bx; d.y = d.by; d.trav += d.spd * dt;
+      continue;
+    }
     if (raycast(d.bx, d.by, nx, ny)) { S.drones.splice(i, 1); continue; }
     d.bx = nx; d.by = ny; d.trav += d.spd * dt;
     const off = S.droneSway * Math.min(1, d.trav / 200) * Math.sin(d.trav / 35), sx = nx - d.vy / d.spd * off, sy = ny + d.vx / d.spd * off;
@@ -617,7 +626,7 @@ async function loadLevel(id, coop = false) {
   S.water = !!data.water; audio.water = S.water;
   S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
-  S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [105, 135], turn: 1.4, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
+  S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 1.2, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
@@ -685,8 +694,8 @@ function updateMini(dt) {
   const t = m.t, f = S.fly;
   f.wave = Math.max(1.6, 3.6 - t * 0.02);
   f.count = [Math.min(1 + Math.floor(t / 40), 4), Math.min(2 + Math.floor(t / 20), 7)];
-  f.speed = [Math.min(105 + t * 0.7, 170), Math.min(135 + t * 0.9, 200)];
-  f.turn = Math.min(1.4 + t * 0.01, 2.2);
+  f.speed = [Math.min(80 + t * 0.6, 150), Math.min(100 + t * 0.8, 185)];
+  f.turn = Math.min(1.2 + t * 0.01, 2.2);
   S.coinList = S.coinList.filter((c) => !c.got);
   const live = S.players.filter((p) => !p.dead), want = S.players.length > 1 ? 10 : 7;
   for (let tries = 0; S.coinList.length < want && tries < 60; tries++) {
