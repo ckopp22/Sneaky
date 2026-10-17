@@ -14,7 +14,7 @@ const C = {
     'Coin Rush', 'Glint', 'Gold Dust', 'Treasure Hall', 'Pocket Change', 'Gilded Floor', 'Bounty', 'Mint', 'Vault Run', 'Jackpot'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, SHOT_CD: 2, BULLET_SPEED: 340, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
-  ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
+  ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 5.5,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
   LAMP_ON: '#ffe666', LAMP_OFF: '#665c29', AMBIENT: 'rgb(4,5,9)', PLAYER_LIGHT: [204, 230, 255],
@@ -1151,6 +1151,7 @@ function drawWorld() {
   lctx.globalCompositeOperation = 'lighter';
   const lr = 64 * C.PLAYER_LIGHT_SCALE;
   const lp = camTarget();
+  lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   const cr = lr * 0.55;
