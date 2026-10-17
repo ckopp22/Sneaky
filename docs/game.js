@@ -978,7 +978,7 @@ const lightMap = document.createElement('canvas'), lctx = lightMap.getContext('2
 const tinted = document.createElement('canvas');
 
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2), W = window.innerWidth, H = window.innerHeight;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), W = canvas.clientWidth || window.innerWidth, H = canvas.clientHeight || window.innerHeight;
   // zoom in on the player, but never so far out that the map leaves empty bars; one uniform scale keeps pixels square
   const zoom = S.zoom || 1, scale = Math.max(Math.min(W / C.VIEW_W, H / C.VIEW_H) * zoom, S.map.w ? Math.max(W / S.map.w, H / S.map.h) : 0);
   Object.assign(S.view, { w: W / scale, h: H / scale, scale, dpr });
@@ -1382,6 +1382,7 @@ window.addEventListener('blur', () => { S.keys.clear(); S.sneakKey = false; if (
 document.addEventListener('visibilitychange', () => { if (document.hidden && !inCoop()) pauseGame(); });
 window.addEventListener('pointerdown', () => audio.start());
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 300));
 const syncAudio = () => audio.setActive(!document.hidden && document.hasFocus());
 document.addEventListener('visibilitychange', syncAudio);
 for (const t of ['blur', 'focus', 'pagehide', 'pageshow']) window.addEventListener(t, syncAudio);
