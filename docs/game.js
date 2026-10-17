@@ -578,7 +578,20 @@ function updateVision(v, dt) {
 }
 
 // ---------- level ----------
+function royaleData(coop) {
+  const w = 70, h = 44, cx = w / 2, cy = h / 2;
+  const walls = [[0, 0, w, 1], [0, h - 1, w, 1], [0, 0, 1, h], [w - 1, 0, 1, h]];
+  for (const [x, y] of [[30, 20], [38, 20], [34, 16], [34, 26], [20, 10], [50, 10], [20, 33], [50, 33], [8, 22], [60, 22], [34, 6], [34, 37], [24, 16], [45, 16], [24, 27], [45, 27]]) walls.push([x, y, 2, 2]);
+  const slots = Array.from({ length: 10 }, (_, i) => [Math.round(cx + 13 * Math.cos(TAU * i / 10 - Math.PI / 2)), Math.round(cy + 10 * Math.sin(TAU * i / 10 - Math.PI / 2))]);
+  const humans = coop ? [0, 5] : [0];
+  const d = { id: 'royale', name: 'Battle Royale', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: 'royale', walls,
+    bots: slots.filter((_, i) => !humans.includes(i)), hint: 'Last one standing wins! Double-tap or press SPACE to shoot. Stay inside the red ring.' };
+  if (coop) d.playerStarts = humans.map((i) => slots[i]); else d.playerStart = slots[0];
+  return d;
+}
+
 function miniData(type, coop) {
+  if (type === 'royale') return royaleData(coop);
   const fly = type === 'fly', w = fly ? 66 : 60, h = fly ? 36 : 34, m = h / 2;
   const walls = [[0, 0, w, 1], [0, h - 1, w, 1], [0, 0, 1, h], [w - 1, 0, 1, h]];
   if (fly) for (const [x, y] of [[10, 8], [24, 8], [38, 8], [52, 8], [17, 18], [45, 18], [10, 28], [24, 28], [38, 28], [52, 28]]) walls.push([x, y, 2, 2]);
@@ -626,12 +639,15 @@ async function loadLevel(id, coop = false) {
   S.drones = [];
   S.droneSway = data.droneSway ?? 0;
   S.water = !!data.water; audio.water = S.water;
-  S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = data.mini === 'fly' ? 1 : 0;
+  S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = data.mini && data.mini !== 'collect' ? 1 : 0;
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
   S.chaseAll = data.mini === 'collect';
   S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 0.7, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
-  S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
+  S.royale = data.mini === 'royale'; S.results = null;
+  S.bots = (data.bots ?? []).map((a) => ({ ...at(a), dead: false, cd: rand(1, 3), strafe: 1, wt: 0 }));
+  S.zone = { r: ROYALE_R0 }; S.alive = S.players.length + S.bots.length;
+  S.shoot = !!data.shoot || S.royale; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
@@ -695,11 +711,70 @@ function makeChaser(x, y, speed = C.GUARD_SPEED) {
   return makeGuard({ path: [[x / t - 0.5, y / t - 0.5]], fov: 50, range: 90, speed }, t);
 }
 
+function killFighter(f) {
+  if (f.dead) return;
+  f.dead = true; f.place = S.alive; S.alive--;
+  if (S.players.includes(f)) audio.playAlert();
+}
+
+function stepBot(b, dir, dt) {
+  b.x += dir.x * 95 * dt; b.y += dir.y * 95 * dt;
+  for (let i = 0; i < 3; i++) for (const w of S.solid) pushOut(b, w);
+}
+
+function updateBots(dt) {
+  const cx = S.map.w / 2, cy = S.map.h / 2, norm = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
+  for (const b of S.bots) {
+    if (b.dead) continue;
+    b.cd = Math.max(0, b.cd - dt);
+    if ((b.sw = (b.sw ?? 0) - dt) <= 0) { b.sw = rand(1, 2.2); b.strafe = Math.random() < 0.5 ? 1 : -1; }
+    let tgt = null, best = 360;
+    for (const o of [...S.players.filter((p) => !p.dead), ...S.bots.filter((q) => q !== b && !q.dead)]) {
+      const d = Math.hypot(o.x - b.x, o.y - b.y);
+      if (d < best && !raycast(b.x, b.y, o.x, o.y)) { best = d; tgt = o; }
+    }
+    let dir = { x: 0, y: 0 };
+    if (Math.hypot(b.x - cx, b.y - cy) > S.zone.r - 70) dir = norm(cx - b.x, cy - b.y);
+    else if (tgt) {
+      const n = norm(tgt.x - b.x, tgt.y - b.y);
+      dir = best > 170 ? n : best < 110 ? { x: -n.x, y: -n.y } : { x: -n.y * b.strafe, y: n.x * b.strafe };
+      if (b.cd <= 0 && S.mini.t > 3) {
+        const a = Math.atan2(n.y, n.x) + rand(-0.22, 0.22);
+        spawnBullet(b, { x: Math.cos(a), y: Math.sin(a) });
+        b.cd = 2 + rand(0.2, 1.4);
+      }
+    } else {
+      if ((b.wt -= dt) <= 0 || !b.wp) {
+        const a = rand(0, TAU), r = rand(0, Math.max(S.zone.r - 100, 20));
+        b.wp = { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r }; b.wt = rand(3, 6);
+      }
+      if (Math.hypot(b.wp.x - b.x, b.wp.y - b.y) > 12) dir = norm(b.wp.x - b.x, b.wp.y - b.y);
+    }
+    stepBot(b, dir, dt);
+  }
+}
+
+function updateRoyale(dt) {
+  const t = S.mini.t, cx = S.map.w / 2, cy = S.map.h / 2;
+  S.zone.r = t < 20 ? ROYALE_R0 : Math.max(90, ROYALE_R0 - (ROYALE_R0 - 90) * (t - 20) / 130);
+  updateBots(dt);
+  for (const f of [...S.players, ...S.bots]) {
+    if (f.dead) continue;
+    if (Math.hypot(f.x - cx, f.y - cy) > S.zone.r) { if ((f.out = (f.out || 0) + dt) > 2.5) killFighter(f); } else f.out = Math.max(0, (f.out || 0) - dt);
+  }
+  if (S.alive <= 1) {
+    const w = S.players.find((p) => !p.dead);
+    if (w) w.place = 1;
+    endLevel(true);
+  }
+}
+
 function updateMini(dt) {
   const m = S.mini;
   if (!m) return;
   m.t += dt;
   const t = m.t, live = S.players.filter((p) => !p.dead);
+  if (m.type === 'royale') return updateRoyale(dt);
   if (m.type === 'fly') {
     const f = S.fly;
     f.wave = Math.max(1.6, 3.6 - t * 0.02);
@@ -736,7 +811,7 @@ function updateCoins() {
 }
 
 function spawnBullet(p, d) {
-  S.bullets.push({ x: p.x + d.x * 14, y: p.y + d.y * 14, vx: d.x * C.BULLET_SPEED, vy: d.y * C.BULLET_SPEED, life: 1.6 });
+  S.bullets.push({ x: p.x + d.x * 14, y: p.y + d.y * 14, vx: d.x * C.BULLET_SPEED, vy: d.y * C.BULLET_SPEED, life: 1.6, owner: p });
 }
 
 function tryFire() {
@@ -752,6 +827,12 @@ function updateBullets(dt) {
     b.life -= dt;
     if (b.life <= 0 || raycast(b.x, b.y, nx, ny)) { S.bullets.splice(i, 1); continue; }
     b.x = nx; b.y = ny;
+    if (S.royale) {
+      const f = S.players.find((q) => q !== b.owner && !q.dead && q.invuln <= 0 && Math.hypot(q.x - nx, q.y - ny) < 13)
+        || S.bots.find((q) => q !== b.owner && !q.dead && Math.hypot(q.x - nx, q.y - ny) < 13);
+      if (f) { killFighter(f); S.bullets.splice(i, 1); }
+      continue;
+    }
     const g = S.visions.find((v) => v.kind === 'guard' && !v.dead && Math.hypot(v.x - nx, v.y - ny) < 14);
     if (g) { g.dead = true; g.poly = []; g.seen = 0; S.kills++; audio.playKey(); S.bullets.splice(i, 1); }
   }
@@ -813,11 +894,21 @@ function step(dt) {
 }
 
 function endLevel(won) {
-  if (inCoop()) netSend({ t: 'end', won });
+  if (inCoop()) netSend({ t: 'end', won, pl: S.royale ? S.players.map((p) => p.place || 0) : undefined });
   finishLevel(won);
 }
 
+function finishRoyale() {
+  S.mode = 'failed'; S.coopMenu = false; S.caught = false;
+  audio.setRolling(false);
+  const place = (S.results ? S.results[S.me] : S.players[S.me].place) || 0, champ = place === 1, coop = inCoop();
+  if (champ) { store.set({ trophies: (store.get().trophies ?? 0) + 1 }); audio.playWin(); startConfetti(); } else audio.playAlert();
+  showPopup(champ ? `Champion! Trophies: ${store.get().trophies}` : `Eliminated. You placed ${place || '?'} of 10`,
+    { resume: false, retry: !coop || net.role === 'host', next: false, pick: coop && net.role === 'host' });
+}
+
 function finishMini() {
+  if (S.mini.type === 'royale') return finishRoyale();
   S.mode = 'failed'; S.coopMenu = false;
   audio.setRolling(false);
   if (!S.caught) audio.playAlert();
@@ -965,6 +1056,7 @@ function drawVision(v) {
   ctx.restore();
 }
 
+const ROYALE_R0 = 760;
 const SPACE_T = 1600;
 const SPACE = [[0.12, 1, 0.5], [0.3, 1.6, 0.7], [0.55, 2.4, 0.9]].map(([par, size, alpha]) => (
   { par, size, alpha, pts: Array.from({ length: 80 }, () => [Math.random() * SPACE_T, Math.random() * SPACE_T, Math.random() * TAU]) }));
@@ -1015,6 +1107,12 @@ function drawWorld() {
     ctx.strokeRect(cp.x, cp.y, cp.w, cp.h); ctx.setLineDash([]);
   }
   drawMechanics();
+  if (S.royale) {
+    const zx = S.map.w / 2, zy = S.map.h / 2;
+    ctx.fillStyle = 'rgba(255,40,40,0.2)';
+    ctx.beginPath(); ctx.rect(-3000, -3000, S.map.w + 6000, S.map.h + 6000); ctx.arc(zx, zy, S.zone.r, 0, TAU, true); ctx.fill('evenodd');
+    ctx.strokeStyle = 'rgba(255,100,100,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(zx, zy, S.zone.r, 0, TAU); ctx.stroke();
+  }
   for (const v of S.visions) {
     if (!v.dead && Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) {
       if (v.kind === 'guard' && !v.turret) drawTrail(v, '#ff2626', 7, 1, 650);
@@ -1038,6 +1136,11 @@ function drawWorld() {
       ctx.shadowBlur = 0;
     }
   }
+  for (const b of S.bots) {
+    if (b.dead) continue;
+    drawTrail(b, '#ffb36b', C.PLAYER_R, 1, 300);
+    ctx.fillStyle = '#ffb36b'; ctx.beginPath(); ctx.arc(b.x, b.y, C.PLAYER_R, 0, TAU); ctx.fill();
+  }
   ctx.fillStyle = '#ffd94d';
   for (const b of S.bullets) { ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, TAU); ctx.fill(); }
   ctx.restore();
@@ -1053,7 +1156,7 @@ function drawWorld() {
   const cr = lr * 0.55;
   lctx.drawImage(tinted, lp.x + ox - cr, lp.y + oy - cr, cr * 2, cr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  S.alarmK += ((S.alarm || S.mini?.type === 'fly' ? 1 : 0) - S.alarmK) * 0.12;
+  S.alarmK += ((S.alarm || (S.mini && S.mini.type !== 'collect') ? 1 : 0) - S.alarmK) * 0.12;
   ctx.globalCompositeOperation = 'multiply';
   ctx.globalAlpha = 1 - S.alarmK;
   ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
@@ -1087,7 +1190,7 @@ function drawWorld() {
     ctx.beginPath(); ctx.arc(kx - 5, ky, 5, 0, TAU); ctx.stroke();
     ctx.fillRect(kx, ky - 1.25, 12, 2.5); ctx.fillRect(kx + 8, ky, 2.5, 5); ctx.fillRect(kx + 12, ky, 2.5, 4);
   }
-  if (S.mini?.type !== 'fly') ctx.drawImage(IMG.vignette, 0, 0, w, h);
+  if (!S.mini || S.mini.type === 'collect') ctx.drawImage(IMG.vignette, 0, 0, w, h);
   if (S.mini) {
     const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 120);
     for (const d of S.drones) {
@@ -1108,7 +1211,8 @@ function drawWorld() {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
-  if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`${S.mini.type === 'fly' ? 'Stars' : 'Coins'}: ${S.coins}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
+  if (S.mini?.type === 'royale') { ctx.fillStyle = '#ffd94d'; ctx.fillText(`Alive: ${S.alive}`, w / 2, 28); }
+  else if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`${S.mini.type === 'fly' ? 'Stars' : 'Coins'}: ${S.coins}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
   if (S.coinNeed) { ctx.fillStyle = S.coins >= S.coinNeed ? '#6effab' : '#ffd94d'; ctx.fillText(`Coins: ${S.coins}/${S.coinNeed}`, w / 2, 28); }
   if (S.shoot && S.need) { ctx.fillStyle = S.kills >= S.need ? '#6effab' : '#ffd94d'; ctx.fillText(`Enemies down: ${S.kills}/${S.need}`, w / 2, 28); }
   const wrap = (text) => {
@@ -1198,13 +1302,12 @@ function showMiniSelect() {
   hideAll();
   const coop = net.role === 'host', best = store.get().mini ?? {}, box = $('minibtns');
   box.textContent = '';
-  for (const [id, name, note] of [['fly', 'Fly', 'Stars & drones'], ['collect', 'Collect', 'Coins & guards'], ['royale', 'Battle Royale', 'Coming soon']]) {
+  for (const [id, name, note] of [['fly', 'Fly', 'Stars & drones'], ['collect', 'Collect', 'Coins & guards'], ['royale', 'Battle Royale', 'Last one standing']]) {
     const b = document.createElement('button'), score = best[id + (coop ? '_coop' : '')];
     b.className = 'btn level';
-    if (id !== 'royale') {
-      b.textContent = `${name}\n${score ? `Best: ${score}` : note}`;
-      b.onclick = () => (coop ? startCoop(id) : startLevel(id));
-    } else { b.textContent = `${name}\n${note}`; b.disabled = true; }
+    const trophies = store.get().trophies;
+    b.textContent = `${name}\n${id === 'royale' ? (trophies ? `Trophies: ${trophies}` : note) : score ? `Best: ${score}` : note}`;
+    b.onclick = () => (coop ? startCoop(id) : startLevel(id));
     box.appendChild(b);
   }
   show($('minisel'), true); show($('backbtn'), true);
@@ -1440,7 +1543,7 @@ function onNetData(m) {
     if (m.t === 'picker') showCoopPicker(Number(m.highest) || 0);
     else if (m.t === 'start') guestStart(m.level);
     else if (m.t === 's' && S.mode === 'playing') applySnapshot(m);
-    else if (m.t === 'end') finishLevel(!!m.won);
+    else if (m.t === 'end') { S.results = m.pl ?? null; finishLevel(!!m.won); }
   } else if (m.t === 'i') {
     const x = Number(m.x) || 0, y = Number(m.y) || 0, len = Math.hypot(x, y);
     S.remoteInput = len > 1 ? { x: x / len, y: y / len } : { x, y };
@@ -1467,7 +1570,8 @@ function snapshot() {
   return { t: 's', al: S.alarm ? 1 : 0, c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0, Math.round((p.cd || 0) * 10) / 10]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0, v.dead ? 1 : 0]),
-    b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills, cn: S.mini ? undefined : S.coinList.map((c) => (c.got ? 1 : 0)),
+    b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills,
+    rb: S.royale ? S.bots.map((b) => [r(b.x), r(b.y), b.dead ? 1 : 0]) : undefined, rz: S.royale ? Math.round(S.zone.r) : 0, ra: S.alive, cn: S.mini ? undefined : S.coinList.map((c) => (c.got ? 1 : 0)),
     cm: S.mini ? S.coinList.filter((c) => !c.got).map((c) => [r(c.x), r(c.y)]) : undefined, cs: S.coins,
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
 }
@@ -1505,6 +1609,10 @@ function applySnapshot(m) {
   while (S.chaseAll && S.visions.length < m.v.length) S.visions.push(makeChaser(...m.v[S.visions.length]));
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
   if (m.kl !== undefined) S.kills = m.kl;
+  if (m.rb) {
+    m.rb.forEach(([x, y, dead], i) => { const b = S.bots[i] || (S.bots[i] = { x, y }); b.tx = x; b.ty = y; b.dead = !!dead; });
+    S.zone.r = m.rz; S.alive = m.ra;
+  }
   if (m.cm) { S.coinList = m.cm.map(([x, y]) => ({ x, y, got: false, star: S.mini.type === 'fly' })); if (m.cs > S.coins) audio.playCoin(); S.coins = m.cs; }
   if (m.cn) { m.cn.forEach((g, i) => { const c = S.coinList[i]; if (c && g && !c.got) { c.got = true; audio.playCoin(); } }); S.coins = S.coinList.filter((c) => c.got).length; }
   m.v.forEach(([x, y, ang, active, seen, windup, dead], i) => {
@@ -1527,6 +1635,7 @@ function guestStep(dt) {
     if (q.ta !== undefined) q.alpha += (q.ta - q.alpha) * k;
     if (i !== S.me && q.tx !== undefined) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; }
   });
+  for (const b of S.bots) if (b.tx !== undefined) { b.x += (b.tx - b.x) * k; b.y += (b.ty - b.y) * k; }
   for (const v of S.visions) {
     if (v.tx !== undefined) {
       v.x += (v.tx - v.x) * k; v.y += (v.ty - v.y) * k; v.ang += angleDiff(v.ang, v.tang) * k;
