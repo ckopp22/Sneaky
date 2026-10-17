@@ -825,12 +825,11 @@ function updateMini(dt) {
     f.speed = [Math.min(80 + t * 0.6, 150), Math.min(100 + t * 0.8, 185)];
     f.turn = Math.min(0.7 + t * 0.006, 1.4);
     for (const d of S.drones) {
-      if (d.cc) continue;
       let near = Infinity, who = null;
       for (const p of live) { const dist = Math.hypot(p.x - d.x, p.y - d.y); if (dist < near) { near = dist; who = p; } }
       if (!who) continue;
       if (near < (d.md ?? Infinity)) { d.md = near; d.mw = who; }
-      if (d.md < 34 && near > 46) { d.cc = true; S.close++; addPlus(d.mw.x, d.mw.y); }
+      if (d.md < 34 && near > 46) { d.md = Infinity; S.close++; addPlus(d.mw.x, d.mw.y); }
     }
   } else if ((m.spawnT = (m.spawnT ?? 0) - dt) <= 0) {
     m.spawnT = Math.max(3, 9 - t * 0.05);
@@ -964,10 +963,10 @@ function finishMini() {
   audio.setRolling(false);
   if (!S.caught) audio.playAlert();
   S.caught = false;
-  const key = S.mini.type + (inCoop() ? '_coop' : ''), m = store.get().mini ?? {}, score = S.coins, isBest = score > (m[key] ?? 0);
+  const key = S.mini.type + (inCoop() ? '_coop' : ''), m = store.get().mini ?? {}, score = S.coins + (S.mini.type === 'fly' ? S.close : 0), isBest = score > (m[key] ?? 0);
   if (isBest) store.set({ mini: { ...m, [key]: score } });
   const coop = inCoop();
-  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${S.mini.type === 'fly' ? `${score} star${score === 1 ? '' : 's'} and ${S.close} close call${S.close === 1 ? '' : 's'}` : `${score} coin${score === 1 ? '' : 's'}`}`,
+  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${S.mini.type === 'fly' ? `${score} points: ${S.coins} star${S.coins === 1 ? '' : 's'} + ${S.close} close call${S.close === 1 ? '' : 's'}` : `${score} coin${score === 1 ? '' : 's'}`}`,
     { resume: false, retry: !coop || net.role === 'host', next: false, pick: coop && net.role === 'host' });
 }
 
@@ -1281,7 +1280,7 @@ function drawWorld() {
   }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
   if (S.mini?.type === 'royale') { ctx.fillStyle = '#ffd94d'; ctx.fillText(`Alive: ${S.alive}`, w / 2, 28); }
-  else if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`${S.mini.type === 'fly' ? `Stars: ${S.coins}   Close calls: ${S.close}` : `Coins: ${S.coins}`}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
+  else if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`${S.mini.type === 'fly' ? `Stars: ${S.coins} + Close calls: ${S.close} = ${S.coins + S.close}` : `Coins: ${S.coins}`}   Best: ${Math.max(S.coins + (S.mini.type === 'fly' ? S.close : 0), S.mini.best)}`, w / 2, 28); }
   if (S.coinNeed) { ctx.fillStyle = S.coins >= S.coinNeed ? '#6effab' : '#ffd94d'; ctx.fillText(`Coins: ${S.coins}/${S.coinNeed}`, w / 2, 28); }
   if (S.shoot && S.need) { ctx.fillStyle = S.kills >= S.need ? '#6effab' : '#ffd94d'; ctx.fillText(`Enemies down: ${S.kills}/${S.need}`, w / 2, 28); }
   const wrap = (text) => {
