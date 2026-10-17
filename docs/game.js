@@ -107,6 +107,21 @@ const audio = (() => {
   a.playWin = () => play(win, 'win', 0.8);
   a.playKey = () => play(keySnd, 'key', 0.7);
   a.playUnlock = () => play(unlockSnd, 'unlock', 0.7);
+  a.playCoin = () => {
+    if (!a.sfx || !a.active) return;
+    try {
+      const ac = getAc(), t0 = ac.currentTime;
+      [988, 1319].forEach((f, i) => {
+        const t = t0 + i * 0.07, o = ac.createOscillator(), g = ac.createGain();
+        o.type = 'square'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + (i ? 0.28 : 0.09));
+        o.connect(g).connect(ac.destination);
+        o.start(t); o.stop(t + 0.3);
+      });
+    } catch { /* ignore */ }
+  };
   a.playCelebrate = () => {
     if (!a.sfx || !a.active) return;
     try {
@@ -637,7 +652,7 @@ function killPlayer(i) {
 function updateCoins() {
   for (const c of S.coinList) {
     if (c.got || !S.players.some((p) => !p.dead && Math.hypot(p.x - c.x, p.y - c.y) < C.PLAYER_R + 9)) continue;
-    c.got = true; S.coins++; audio.playKey();
+    c.got = true; S.coins++; audio.playCoin();
   }
 }
 
@@ -1336,7 +1351,7 @@ function applySnapshot(m) {
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
   if (m.kl !== undefined) S.kills = m.kl;
-  if (m.cn) { m.cn.forEach((g, i) => { const c = S.coinList[i]; if (c && g && !c.got) { c.got = true; audio.playKey(); } }); S.coins = S.coinList.filter((c) => c.got).length; }
+  if (m.cn) { m.cn.forEach((g, i) => { const c = S.coinList[i]; if (c && g && !c.got) { c.got = true; audio.playCoin(); } }); S.coins = S.coinList.filter((c) => c.got).length; }
   m.v.forEach(([x, y, ang, active, seen, windup, dead], i) => {
     const v = S.visions[i];
     if (!v) return;
