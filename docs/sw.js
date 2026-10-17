@@ -1,4 +1,4 @@
-const CACHE = 'sneaky-v22';
+const CACHE = 'sneaky-v23';
 const FILES = [
  "./",
  "index.html",
@@ -18,6 +18,16 @@ const FILES = [
  "assets/levels/coop/coop58.json",
  "assets/levels/coop/coop59.json",
  "assets/levels/coop/coop60.json",
+ "assets/levels/coop/coop61.json",
+ "assets/levels/coop/coop62.json",
+ "assets/levels/coop/coop63.json",
+ "assets/levels/coop/coop64.json",
+ "assets/levels/coop/coop65.json",
+ "assets/levels/coop/coop66.json",
+ "assets/levels/coop/coop67.json",
+ "assets/levels/coop/coop68.json",
+ "assets/levels/coop/coop69.json",
+ "assets/levels/coop/coop70.json",
  "assets/levels/coop/coop5.json",
  "assets/levels/coop/coop6.json",
  "assets/levels/coop/coop7.json",
@@ -156,6 +166,16 @@ const FILES = [
  "assets/levels/level68.json",
  "assets/levels/level69.json",
  "assets/levels/level70.json",
+ "assets/levels/level71.json",
+ "assets/levels/level72.json",
+ "assets/levels/level73.json",
+ "assets/levels/level74.json",
+ "assets/levels/level75.json",
+ "assets/levels/level76.json",
+ "assets/levels/level77.json",
+ "assets/levels/level78.json",
+ "assets/levels/level79.json",
+ "assets/levels/level80.json",
  "assets/levels/level9.json"
 ];
 

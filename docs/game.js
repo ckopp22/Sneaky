@@ -1,13 +1,14 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 70, COOP_LEVEL_COUNT: 60, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 80, COOP_LEVEL_COUNT: 70, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon',
     'Dogleg', 'Teardrop', 'Figure Eight', 'Wave Cave', 'Horseshoe', 'Pods', 'Lightning', 'Roots', 'Sunburst', 'Grand Vault',
     'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet',
-    'Duet Shallows', 'Decoy', 'Wet Gate', 'Two Reeds', 'Tide Pair', 'Lure Left', 'Lagoon Duo', 'Gate Current', 'Deep Pair', 'Abyss Duo'], STEP: 1 / 60,
+    'Duet Shallows', 'Decoy', 'Wet Gate', 'Two Reeds', 'Tide Pair', 'Lure Left', 'Lagoon Duo', 'Gate Current', 'Deep Pair', 'Abyss Duo',
+    'Lights Out', 'Open Floor', 'Crowd', 'Four Corners', 'Wide Open', 'Patrol Ring', 'Big Hall', 'Cross Fire', 'Full House', 'Alarm Bells'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
@@ -446,7 +447,8 @@ function listen(g, dt) {
 }
 
 function hunt(g, dt) {
-  const p = S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
+  const near = S.players.filter((q) => !q.dead && q.invuln <= 0).sort((a, b) => Math.hypot(a.x - g.x, a.y - g.y) - Math.hypot(b.x - g.x, b.y - g.y))[0];
+  const p = S.alarm ? near : S.players.find((q) => !q.dead && q.noisy && q.invuln <= 0 && Math.hypot(q.x - g.x, q.y - g.y) < C.WATER_HEAR);
   if (p) { g.chase = { x: p.x, y: p.y }; g.chaseLeft = 1.5; }
   if (!(g.chaseLeft > 0)) return false;
   g.chaseLeft -= dt;
@@ -457,7 +459,7 @@ function hunt(g, dt) {
   if (dist <= 2) { g.route.shift(); if (!g.route.length) g.chaseLeft = Math.min(g.chaseLeft, 0); }
   else {
     turnToward(g, Math.atan2(dy, dx), dt * 2);
-    const move = Math.min(g.speed * 1.6 * dt, dist);
+    const move = Math.min(g.speed * (S.alarm ? 2 : 1.6) * dt, dist);
     g.x += dx / dist * move; g.y += dy / dist * move; g.vel = g.speed;
   }
   if (g.chaseLeft <= 0) { g.route = null; g.vel = 0; startPause(g, 1.5); }
@@ -467,7 +469,7 @@ function hunt(g, dt) {
 function updateVision(v, dt) {
   if (v.kind === 'guard') {
     if (!v.turret) {
-      if (!(S.water && hunt(v, dt))) { listen(v, dt); patrol(v, dt); }
+      if (!((S.water || S.alarm) && hunt(v, dt))) { listen(v, dt); patrol(v, dt); }
       v.swayT = (v.swayT ?? Math.random() * TAU) + (v.seen > 0 ? 0 : dt * 2.4);
       v.sway = rad(C.GUARD_SWAY_DEG) * Math.sin(v.swayT);
     }
@@ -523,6 +525,7 @@ async function loadLevel(id, coop = false) {
   S.drones = [];
   S.droneSway = data.droneSway ?? 0;
   S.water = !!data.water; audio.water = S.water;
+  S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
@@ -612,6 +615,8 @@ function step(dt) {
       if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - v.x, p.y - v.y) < C.PLAYER_R + 10) spotted.add(i);
     });
   }
+  if (S.alarmLevel && !S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); spotted.clear(); }
+  if (S.alarmLevel) spotted.clear();
   spotted.forEach(killPlayer);
   if (S.mode === 'playing' && S.players.every((p) => p.dead) && (S.failT -= dt) <= 0) endLevel(false);
 }
@@ -811,8 +816,11 @@ function drawWorld() {
   const cr = lr * 0.55;
   lctx.drawImage(tinted, lp.x + ox - cr, lp.y + oy - cr, cr * 2, cr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  S.alarmK += ((S.alarm ? 1 : 0) - S.alarmK) * 0.12;
   ctx.globalCompositeOperation = 'multiply';
+  ctx.globalAlpha = 1 - S.alarmK;
   ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   for (const d of S.drones) {
@@ -1165,7 +1173,7 @@ function onPartnerLeft() {
 
 function snapshot() {
   const r = (n) => Math.round(n * 10) / 10;
-  return { t: 's', c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
+  return { t: 's', al: S.alarm ? 1 : 0, c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0]),
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
@@ -1173,6 +1181,8 @@ function snapshot() {
 
 function applySnapshot(m) {
   S.cpActive = !!m.c;
+  if (m.al && !S.alarm) audio.playAlert();
+  S.alarm = !!m.al;
   if (m.k && !S.keyGot) { S.keyGot = true; S.hint = 'Key found! The door is unlocked.'; S.hintT = 4; audio.playKey(); }
   if (m.o) { m.o.forEach((o, i) => { if (S.barriers[i]) S.barriers[i].open = !!o; }); }
   if (m.a) { [...S.plates, ...S.switches].forEach((t, i) => { t.on = !!m.a[i]; }); }
