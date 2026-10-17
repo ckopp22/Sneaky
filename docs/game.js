@@ -232,8 +232,25 @@ function spawnWave(dt) {
   f.t -= dt;
   if (f.t > 0) return;
   f.t = f.wave * rand(0.7, 1.3);
-  const sx = S.cam.x + S.view.w / 2 + 40, live = S.players.filter((p) => !p.dead);
-  if (!live.length || (!S.mini && sx > S.goal.x + S.goal.w / 2)) return;
+  const live = S.players.filter((p) => !p.dead);
+  if (!live.length) return;
+  if (S.mini) {
+    const n = f.count[0] + Math.floor(Math.random() * (f.count[1] - f.count[0] + 1)), R = Math.hypot(S.view.w, S.view.h) / 2 + 60;
+    for (let i = 0; i < n; i++) {
+      const c = live[Math.floor(Math.random() * live.length)];
+      for (let tries = 0; tries < 12; tries++) {
+        const a = rand(0, TAU), x = c.x + Math.cos(a) * R, y = c.y + Math.sin(a) * R;
+        if (x < 50 || y < 50 || x > S.map.w - 50 || y > S.map.h - 50 || S.solid.some((w) => x > w.x - 10 && x < w.x + w.w + 10 && y > w.y - 10 && y < w.y + w.h + 10)) continue;
+        const d = makeDrone(x, y, Math.atan2(c.y - y, c.x - x), rand(f.speed[0], f.speed[1]));
+        Object.assign(d, { lock: true, turn: f.turn, life: 12, active: false });
+        S.drones.push(d);
+        break;
+      }
+    }
+    return;
+  }
+  const sx = S.cam.x + S.view.w / 2 + 40;
+  if (sx > S.goal.x + S.goal.w / 2) return;
   const n = f.count[0] + Math.floor(Math.random() * (f.count[1] - f.count[0] + 1));
   for (let i = 0; i < n; i++) {
     const aim = Math.random() < 0.3 ? live[Math.floor(Math.random() * live.length)] : null;
@@ -258,14 +275,15 @@ function updateShooters(dt) {
   for (let i = S.drones.length - 1; i >= 0; i--) {
     const d = S.drones[i];
     if (d.straight && d.bx < S.cam.x - S.view.w / 2 - 120) { S.drones.splice(i, 1); continue; }
+    if (d.life !== undefined && (d.life -= dt) <= 0) { S.drones.splice(i, 1); continue; }
     if (!S.droneSway && d.spd && !d.straight) {
-      let tgt = null, best = C.DRONE_LOCK;
+      let tgt = null, best = d.lock ? Infinity : C.DRONE_LOCK;
       for (const p of S.players) {
         const dist = Math.hypot(p.x - d.bx, p.y - d.by);
-        if (!p.dead && p.invuln <= 0 && dist < best && !raycast(d.bx, d.by, p.x, p.y)) { best = dist; tgt = p; }
+        if (!p.dead && p.invuln <= 0 && dist < best && (d.lock || !raycast(d.bx, d.by, p.x, p.y))) { best = dist; tgt = p; }
       }
       if (tgt) {
-        const cur = Math.atan2(d.vy, d.vx), a = cur + clamp(angleDiff(cur, Math.atan2(tgt.y - d.by, tgt.x - d.bx)), -C.DRONE_TURN * dt, C.DRONE_TURN * dt);
+        const cur = Math.atan2(d.vy, d.vx), a = cur + clamp(angleDiff(cur, Math.atan2(tgt.y - d.by, tgt.x - d.bx)), -(d.turn || C.DRONE_TURN) * dt, (d.turn || C.DRONE_TURN) * dt);
         d.vx = Math.cos(a) * d.spd; d.vy = Math.sin(a) * d.spd; d.ang = a;
       }
     }
@@ -552,10 +570,12 @@ function updateVision(v, dt) {
 
 // ---------- level ----------
 function miniData(type, coop) {
-  const w = 2000, h = 18, m = h / 2;
-  const d = { id: type, name: 'Fly', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: type,
-    walls: [[0, 0, w, 1], [0, h - 1, w, 1], [0, 0, 1, h], [w - 1, 0, 1, h]], hint: 'Collect the stars and dodge the drones. How many can you get?' };
-  if (coop) d.playerStarts = [[3, m - 2], [3, m + 1]]; else d.playerStart = [3, m];
+  const w = 66, h = 36, m = h / 2;
+  const walls = [[0, 0, w, 1], [0, h - 1, w, 1], [0, 0, 1, h], [w - 1, 0, 1, h]];
+  for (const [x, y] of [[10, 8], [24, 8], [38, 8], [52, 8], [17, 18], [45, 18], [10, 28], [24, 28], [38, 28], [52, 28]]) walls.push([x, y, 2, 2]);
+  const d = { id: type, name: 'Fly', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: type, walls,
+    hint: 'Fly anywhere and grab the stars. Drones lock on, so turn to dodge them. Red triangles show where they come from.' };
+  if (coop) d.playerStarts = [[w / 2 - 1, m], [w / 2 + 1, m]]; else d.playerStart = [w / 2, m];
   return d;
 }
 
@@ -597,7 +617,7 @@ async function loadLevel(id, coop = false) {
   S.water = !!data.water; audio.water = S.water;
   S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
-  S.fly = data.mini === 'fly' ? { wave: 2.6, count: [2, 3], speed: [140, 210], t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
+  S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [105, 135], turn: 1.4, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
@@ -663,17 +683,17 @@ function updateMini(dt) {
   if (!m) return;
   m.t += dt;
   const t = m.t, f = S.fly;
-  f.wave = Math.max(0.7, 2.6 - t * 0.025);
-  f.count = [Math.min(2 + Math.floor(t / 25), 8), Math.min(3 + Math.floor(t / 15), 10)];
-  f.speed = [Math.min(140 + t * 1.2, 330), Math.min(210 + t * 2, 420)];
-  if ((m.starT -= dt) <= 0) {
-    m.starT = rand(0.8, 1.6);
-    S.coinList.push({ x: S.cam.x + S.view.w / 2 + 40, y: rand(48, S.map.h - 48), got: false, star: true });
-  }
-  for (let i = S.coinList.length - 1; i >= 0; i--) {
-    const c = S.coinList[i];
-    c.x -= 35 * dt;
-    if (c.got || c.x < S.cam.x - S.view.w / 2 - 80) S.coinList.splice(i, 1);
+  f.wave = Math.max(1.6, 3.6 - t * 0.02);
+  f.count = [Math.min(1 + Math.floor(t / 40), 4), Math.min(2 + Math.floor(t / 20), 7)];
+  f.speed = [Math.min(105 + t * 0.7, 170), Math.min(135 + t * 0.9, 200)];
+  f.turn = Math.min(1.4 + t * 0.01, 2.2);
+  S.coinList = S.coinList.filter((c) => !c.got);
+  const live = S.players.filter((p) => !p.dead), want = S.players.length > 1 ? 10 : 7;
+  for (let tries = 0; S.coinList.length < want && tries < 60; tries++) {
+    const x = rand(60, S.map.w - 60), y = rand(60, S.map.h - 60);
+    if (S.walls.some((w) => x > w.x - 18 && x < w.x + w.w + 18 && y > w.y - 18 && y < w.y + w.h + 18)) continue;
+    if (live.some((p) => Math.hypot(p.x - x, p.y - y) < 130)) continue;
+    S.coinList.push({ x, y, got: false, star: true });
   }
 }
 
@@ -1016,6 +1036,18 @@ function drawWorld() {
     ctx.fillRect(kx, ky - 1.25, 12, 2.5); ctx.fillRect(kx + 8, ky, 2.5, 5); ctx.fillRect(kx + 12, ky, 2.5, 4);
   }
   ctx.drawImage(IMG.vignette, 0, 0, w, h);
+  if (S.mini) {
+    const pulse = 0.65 + 0.35 * Math.sin(performance.now() / 120);
+    for (const d of S.drones) {
+      const dx = d.x - S.cam.x, dy = d.y - S.cam.y;
+      if (Math.abs(dx) < w / 2 && Math.abs(dy) < h / 2) continue;
+      const k = Math.min((w / 2 - 22) / Math.abs(dx || 1e-6), (h / 2 - 22) / Math.abs(dy || 1e-6)), a = Math.atan2(dy, dx), px = w / 2 + dx * k, py = h / 2 + dy * k;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(a);
+      ctx.fillStyle = `rgba(255,50,50,${pulse})`;
+      ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-9, -9); ctx.lineTo(-9, 9); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
   if (S.mode === 'catching') {
     const k = Math.sin(Math.PI * S.catchT / C.CATCH_TIME), z = 1 + 0.25 * k;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
