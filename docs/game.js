@@ -7,7 +7,7 @@ const C = {
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon',
     'Dogleg', 'Teardrop', 'Figure Eight', 'Wave Cave', 'Horseshoe', 'Pods', 'Lightning', 'Roots', 'Sunburst', 'Grand Vault'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
-  GRACE: 0.3, CATCH_TIME: 1.1, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
+  GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 44, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
   VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
@@ -128,7 +128,7 @@ const audio = (() => {
 // ---------- state ----------
 const S = {
   mode: 'loading', level: 1, names: [], walls: [], goal: null, plates: [], switches: [], barriers: [], solid: [], map: { w: 0, h: 0 },
-  players: [{ x: 0, y: 0 }], me: 0, remoteInput: { x: 0, y: 0 }, coopMenu: false, visions: [], keys: new Set(), joy: { id: -1, ox: 0, oy: 0, kx: 0, ky: 0, vx: 0, vy: 0 },
+  players: [{ x: 0, y: 0 }], me: 0, remoteInput: { x: 0, y: 0 }, coopMenu: false, visions: [], drones: [], keys: new Set(), joy: { id: -1, ox: 0, oy: 0, kx: 0, ky: 0, vx: 0, vy: 0 },
   cam: { x: 0, y: 0 }, view: { w: C.VIEW_W, h: C.VIEW_H, scale: 1, dpr: 1 },
 };
 
@@ -191,7 +191,28 @@ function makeGuard(d, tile) {
   Object.assign(g, { kind: 'guard', path, speed: d.speed ?? C.GUARD_SPEED, pause: d.pause ?? C.GUARD_PAUSE,
     erratic: d.erratic ?? 0, wander, vel: 0, cur: 0, last: -1, destIdx: -1, dest: null, route: null, next: 1, dir: 1, pauseLeft: 0, pauseTotal: 1, lookBase: 0, mult: 1, multLeft: 0 });
   if (!d.wander && path.length > 1) g.ang = Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x);
+  if (d.turret) Object.assign(g, { turret: true, active: false, wander: false, ang: rad(d.aim ?? 0) });
+  if (d.shoot) g.shoot = { every: d.shoot.every ?? 3, speed: d.shoot.speed ?? C.DRONE_SPEED, t: d.shoot.offset ?? 0 };
   return g;
+}
+
+function makeDrone(x, y, ang, speed) {
+  const d = makeVision(x, y, 360, C.DRONE_R, C.LIGHT);
+  return Object.assign(d, { kind: 'drone', ang, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed });
+}
+
+function updateShooters(dt) {
+  for (const v of S.visions) {
+    const s = v.shoot;
+    if (!s) continue;
+    s.t += dt;
+    v.windup = s.t >= s.every - C.WINDUP;
+    if (s.t >= s.every) { s.t = 0; v.windup = false; S.drones.push(makeDrone(v.x, v.y, v.ang + (v.sway || 0), s.speed)); }
+  }
+  for (let i = S.drones.length - 1; i >= 0; i--) {
+    const d = S.drones[i], nx = d.x + d.vx * dt, ny = d.y + d.vy * dt;
+    if (raycast(d.x, d.y, nx, ny)) S.drones.splice(i, 1); else { d.x = nx; d.y = ny; }
+  }
 }
 
 function makeLight(d, tile) {
@@ -404,11 +425,13 @@ function listen(g, dt) {
 
 function updateVision(v, dt) {
   if (v.kind === 'guard') {
-    listen(v, dt);
-    patrol(v, dt);
-    v.swayT = (v.swayT ?? Math.random() * TAU) + (v.seen > 0 ? 0 : dt * 2.4);
-    v.sway = rad(C.GUARD_SWAY_DEG) * Math.sin(v.swayT);
-  } else sweepLight(v, dt);
+    if (!v.turret) {
+      listen(v, dt);
+      patrol(v, dt);
+      v.swayT = (v.swayT ?? Math.random() * TAU) + (v.seen > 0 ? 0 : dt * 2.4);
+      v.sway = rad(C.GUARD_SWAY_DEG) * Math.sin(v.swayT);
+    }
+  } else if (v.kind !== 'drone') sweepLight(v, dt);
   const spotted = [];
   if (!v.active) { v.poly = []; v.seen = 0; v.times = []; return spotted; }
   updatePoly(v);
@@ -457,6 +480,7 @@ async function loadLevel(id, coop = false) {
   S.failT = 1.2;
   S.remoteInput = { x: 0, y: 0 };
   S.coopMenu = false;
+  S.drones = [];
   S.visions = [...(data.guards ?? []).map((g) => makeGuard(g, tile)), ...(data.lights ?? []).map((l) => makeLight(l, tile))];
   S.joy.vx = S.joy.vy = 0;
   S.zoom = coop ? C.ZOOM_COOP : C.ZOOM_SOLO;
@@ -533,9 +557,10 @@ function step(dt) {
     p.invuln = Math.max(0, p.invuln - dt);
   });
   const spotted = new Set();
-  for (const v of S.visions) updateVision(v, dt).forEach((i) => spotted.add(i));
+  updateShooters(dt);
+  for (const v of [...S.visions, ...S.drones]) updateVision(v, dt).forEach((i) => spotted.add(i));
   for (const v of S.visions) {
-    if (v.kind !== 'guard') continue;
+    if (v.kind !== 'guard' || v.turret) continue;
     S.players.forEach((p, i) => {
       if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - v.x, p.y - v.y) < C.PLAYER_R + 10) spotted.add(i);
     });
@@ -659,7 +684,13 @@ function drawVision(v) {
     v.poly.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
     ctx.closePath(); ctx.fill();
   }
-  if (v.kind === 'guard') {
+  if (v.windup) {
+    ctx.strokeStyle = 'rgba(255,90,60,0.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 22 + 6 * Math.sin(performance.now() / 50), 0, TAU); ctx.stroke();
+  }
+  if (v.turret) {
+    ctx.fillStyle = C.GUARD; ctx.fillRect(-9, -9, 18, 18);
+    ctx.strokeStyle = '#ffb3a0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(v.ang) * 16, Math.sin(v.ang) * 16); ctx.stroke();
+  } else if (v.kind === 'guard') {
     const hz = ctx.createRadialGradient(0, 0, 4, 0, 0, 34);
     hz.addColorStop(0, 'rgba(255,38,38,0.4)'); hz.addColorStop(1, 'rgba(255,38,38,0)');
     ctx.fillStyle = hz; ctx.beginPath(); ctx.arc(0, 0, 34, 0, TAU); ctx.fill();
@@ -707,10 +738,11 @@ function drawWorld() {
   drawMechanics();
   for (const v of S.visions) {
     if (Math.abs(v.x - S.cam.x) < w / 2 + v.range + 40 && Math.abs(v.y - S.cam.y) < h / 2 + v.range + 40) {
-      if (v.kind === 'guard') drawTrail(v, '#ff2626', 7, 1, 650);
+      if (v.kind === 'guard' && !v.turret) drawTrail(v, '#ff2626', 7, 1, 650);
       drawVision(v);
     }
   }
+  for (const d of S.drones) drawVision(d);
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
     drawTrail(p);
@@ -735,6 +767,11 @@ function drawWorld() {
   ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
   ctx.globalCompositeOperation = 'source-over';
   ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+  for (const d of S.drones) {
+    const gr = 26, dxp = d.x + ox, dyp = d.y + oy;
+    ctx.drawImage(IMG.glow, dxp - gr, dyp - gr, gr * 2, gr * 2);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(dxp, dyp, 3.5, 0, TAU); ctx.fill();
+  }
   if (S.key && !S.keyGot) {
     const kx = S.key.x + ox, ky = S.key.y + oy, pulse = 1 + 0.15 * Math.sin(performance.now() / 250), gr = 34 * pulse;
     ctx.drawImage(IMG.glow, kx - gr, ky - gr, gr * 2, gr * 2);
@@ -1078,7 +1115,8 @@ function snapshot() {
   const r = (n) => Math.round(n * 10) / 10;
   return { t: 's', c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0]),
-    v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0]) };
+    v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0]),
+    d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
 }
 
 function applySnapshot(m) {
@@ -1101,11 +1139,17 @@ function applySnapshot(m) {
       q.tx = x; q.ty = y;
     }
   });
-  m.v.forEach(([x, y, ang, active, seen], i) => {
+  if (m.d) {
+    S.drones = m.d.map(([x, y, seen], i) => {
+      const o = S.drones[i] || makeDrone(x, y, 0, 0);
+      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0 });
+    });
+  }
+  m.v.forEach(([x, y, ang, active, seen, windup], i) => {
     const v = S.visions[i];
     if (!v) return;
     if (v.tx === undefined) { v.x = x; v.y = y; v.ang = ang; }
-    Object.assign(v, { tx: x, ty: y, tang: ang, active: !!active, seen: seen ? 1 : 0 });
+    Object.assign(v, { tx: x, ty: y, tang: ang, active: !!active, seen: seen ? 1 : 0, windup: !!windup });
   });
 }
 
@@ -1122,6 +1166,10 @@ function guestStep(dt) {
       v.x += (v.tx - v.x) * k; v.y += (v.ty - v.y) * k; v.ang += angleDiff(v.ang, v.tang) * k;
     }
     if (v.active) updatePoly(v); else v.poly = [];
+  }
+  for (const d of S.drones) {
+    if (d.tx !== undefined) { d.x += (d.tx - d.x) * k; d.y += (d.ty - d.y) * k; }
+    updatePoly(d);
   }
   followCamera();
 }
