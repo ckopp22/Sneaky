@@ -636,6 +636,12 @@ function step(dt) {
     if (!S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); S.visions.push(spawnDefender()); }
     spotted.clear();
   }
+  if (S.alarmLevel) {
+    droneHit.clear();
+    for (const d of S.drones) S.players.forEach((p, i) => {
+      if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - d.x, p.y - d.y) < C.PLAYER_R + 6) droneHit.add(i);
+    });
+  }
   droneHit.forEach((i) => spotted.add(i));
   for (const v of S.visions) {
     if (v.kind !== 'guard' || v.turret) continue;
