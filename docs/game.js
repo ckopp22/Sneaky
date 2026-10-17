@@ -21,7 +21,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const lerp = (a, b, t) => a + (b - a) * t;
 const $ = (id) => document.getElementById(id);
 
-const DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
+const DEV = ['localhost', '127.0.0.1'].includes(location.hostname) || /[?&]dev\b/.test(location.search);
 
 // ---------- assets ----------
 const IMG = {};
@@ -1127,7 +1127,7 @@ function showCoopPicker(highest) {
   for (let id = 1; id <= C.COOP_LEVEL_COUNT; id++) {
     const b = document.createElement('button');
     b.className = 'btn level' + (id <= highest ? ' done' : '');
-    if (id <= highest + 1) {
+    if (DEV || id <= highest + 1) {
       b.textContent = `${id}\n${C.COOP_NAMES[id - 1]}`;
       b.onclick = () => startCoop(id);
     } else {
