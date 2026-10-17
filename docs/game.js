@@ -981,7 +981,7 @@ function drawWorld() {
   for (const d of S.drones) drawVision(d);
   for (const p of S.players) {
     if (p.alpha <= 0.01) continue;
-    drawTrail(p);
+    drawTrail(p, p.color, C.PLAYER_R, p.alpha, S.mini ? 1100 : 350);
     ctx.globalAlpha = p.alpha * (p.sneak ? 0.45 : 1);
     ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, C.PLAYER_R, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
