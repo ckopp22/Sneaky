@@ -1,12 +1,13 @@
 'use strict';
 
 const C = {
-  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 70, COOP_LEVEL_COUNT: 50, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
+  VIEW_W: 960, VIEW_H: 540, LEVEL_COUNT: 70, COOP_LEVEL_COUNT: 60, COOP_NAMES: ['Two Doors', 'Split Paths', 'Crossing', 'Pincer', 'Together',
     'First Gate', 'Leapfrog', 'Switchback', 'Three Locks', 'Lockdown', 'Side by Side', 'Hold the Gate', 'Split Halls', 'Relay',
     'Double Lock', 'Hall of Plates', 'Tag Team', 'Long Way Round', 'Gauntlet', 'Final Maze', 'Vast Halls', 'Endless Maze', 'Lost Together',
     'The Great Maze', 'Grand Labyrinth', 'Twin Dome', 'Crossroads', 'The Ring', 'Starfield', 'Crescent Moon',
     'Dogleg', 'Teardrop', 'Figure Eight', 'Wave Cave', 'Horseshoe', 'Pods', 'Lightning', 'Roots', 'Sunburst', 'Grand Vault',
-    'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet'], STEP: 1 / 60,
+    'Duo Hello', 'Side Nooks', 'Three Cannons', 'T-Junction', 'Roaming Shooter', 'Stair Hall', 'Twin Shooters', 'The U', 'Pillar Hall', 'Long Gauntlet',
+    'Duet Shallows', 'Decoy', 'Wet Gate', 'Two Reeds', 'Tide Pair', 'Lure Left', 'Lagoon Duo', 'Gate Current', 'Deep Pair', 'Abyss Duo'], STEP: 1 / 60,
   PLAYER_SPEED: 120, PLAYER_R: 10, JOY_R: 60, JOY_KNOB_R: 26, JOY_DEAD: 0.15,
   GRACE: 0.3, CATCH_TIME: 1.1, DRONE_SPEED: 70, DRONE_R: 56, DRONE_LOCK: 150, DRONE_TURN: 1.8, WINDUP: 0.4, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, WATER_HEAR: 230, SNEAK_MULT: 0.5, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
@@ -517,7 +518,7 @@ async function loadLevel(id, coop = false) {
   S.cpActive = false;
   S.hint = data.hint ?? ''; S.hintT = 8;
   S.failT = 1.2;
-  S.remoteInput = { x: 0, y: 0 };
+  S.remoteInput = { x: 0, y: 0 }; S.remoteSneak = false;
   S.coopMenu = false;
   S.drones = [];
   S.droneSway = data.droneSway ?? 0;
@@ -585,7 +586,7 @@ function step(dt) {
     if (p.dead) return;
     const dir = i === S.me ? inputVector() : S.remoteInput;
     const moving = dir.x !== 0 || dir.y !== 0;
-    p.sneak = S.water && i === S.me && (S.sneakKey || S.sneakLatch);
+    p.sneak = S.water && (i === S.me ? S.sneakKey || S.sneakLatch : S.remoteSneak);
     p.noisy = S.water && moving && !p.sneak;
     movePlayer(p, dir, dt);
     if (i === S.me) audio.setRolling(moving && !p.sneak);
@@ -1147,6 +1148,7 @@ function onNetData(m) {
   } else if (m.t === 'i') {
     const x = Number(m.x) || 0, y = Number(m.y) || 0, len = Math.hypot(x, y);
     S.remoteInput = len > 1 ? { x: x / len, y: y / len } : { x, y };
+    S.remoteSneak = !!m.s;
   }
 }
 
@@ -1164,7 +1166,7 @@ function onPartnerLeft() {
 function snapshot() {
   const r = (n) => Math.round(n * 10) / 10;
   return { t: 's', c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
-    a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0]),
+    a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0]),
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
 }
@@ -1175,9 +1177,10 @@ function applySnapshot(m) {
   if (m.o) { m.o.forEach((o, i) => { if (S.barriers[i]) S.barriers[i].open = !!o; }); }
   if (m.a) { [...S.plates, ...S.switches].forEach((t, i) => { t.on = !!m.a[i]; }); }
   updateSolids();
-  m.p.forEach(([x, y, alpha, dead], i) => {
+  m.p.forEach(([x, y, alpha, dead, sn], i) => {
     const q = S.players[i];
     if (!q) return;
+    if (i !== S.me) q.sneak = !!sn;
     if (dead && !q.dead) audio.playAlert();
     q.ta = alpha; q.dead = !!dead;
     if (i === S.me) {
@@ -1205,8 +1208,9 @@ function applySnapshot(m) {
 
 function guestStep(dt) {
   const dir = me().dead ? { x: 0, y: 0 } : inputVector(), k = 1 - Math.exp(-dt * 20);
+  me().sneak = S.water && (S.sneakKey || S.sneakLatch);
   if (!me().dead) movePlayer(me(), dir, dt);
-  audio.setRolling(dir.x !== 0 || dir.y !== 0);
+  audio.setRolling((dir.x !== 0 || dir.y !== 0) && !me().sneak);
   S.players.forEach((q, i) => {
     if (q.ta !== undefined) q.alpha += (q.ta - q.alpha) * k;
     if (i !== S.me && q.tx !== undefined) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; }
@@ -1231,7 +1235,7 @@ function netTick(dt) {
     if (net.sendT >= 0.05) { net.sendT = 0; netSend(snapshot()); }
   } else {
     net.inputT += dt;
-    if (net.inputT >= 1 / 30) { net.inputT = 0; const v = inputVector(); netSend({ t: 'i', x: v.x, y: v.y }); }
+    if (net.inputT >= 1 / 30) { net.inputT = 0; const v = inputVector(); netSend({ t: 'i', x: v.x, y: v.y, s: S.sneakKey || S.sneakLatch ? 1 : 0 }); }
   }
 }
 
