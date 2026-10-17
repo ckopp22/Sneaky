@@ -233,7 +233,7 @@ function spawnWave(dt) {
   if (f.t > 0) return;
   f.t = f.wave * rand(0.7, 1.3);
   const sx = S.cam.x + S.view.w / 2 + 40, live = S.players.filter((p) => !p.dead);
-  if (!live.length || sx > S.goal.x + S.goal.w / 2) return;
+  if (!live.length || (!S.mini && sx > S.goal.x + S.goal.w / 2)) return;
   const n = f.count[0] + Math.floor(Math.random() * (f.count[1] - f.count[0] + 1));
   for (let i = 0; i < n; i++) {
     const aim = Math.random() < 0.3 ? live[Math.floor(Math.random() * live.length)] : null;
@@ -551,8 +551,16 @@ function updateVision(v, dt) {
 }
 
 // ---------- level ----------
+function miniData(type, coop) {
+  const w = 2000, h = 18, m = h / 2;
+  const d = { id: type, name: 'Fly', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: type,
+    walls: [[0, 0, w, 1], [0, h - 1, w, 1], [0, 0, 1, h], [w - 1, 0, 1, h]], hint: 'Collect the stars and dodge the drones. How many can you get?' };
+  if (coop) d.playerStarts = [[3, m - 2], [3, m + 1]]; else d.playerStart = [3, m];
+  return d;
+}
+
 async function loadLevel(id, coop = false) {
-  const data = await (await fetch(coop ? `assets/levels/coop/coop${id}.json` : `assets/levels/level${id}.json`)).json();
+  const data = typeof id === 'string' ? miniData(id, coop) : await (await fetch(coop ? `assets/levels/coop/coop${id}.json` : `assets/levels/level${id}.json`)).json();
   const tile = data.tileSize ?? 32, rect = (a) => ({ x: a[0] * tile, y: a[1] * tile, w: a[2] * tile, h: a[3] * tile });
   S.level = id;
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
@@ -588,7 +596,8 @@ async function loadLevel(id, coop = false) {
   S.droneSway = data.droneSway ?? 0;
   S.water = !!data.water; audio.water = S.water;
   S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = 0;
-  S.fly = data.fly ? { ...data.fly, t: 2 } : null;
+  S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
+  S.fly = data.mini === 'fly' ? { wave: 2.6, count: [2, 3], speed: [140, 210], t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.shoot = !!data.shoot; S.need = data.kills ?? 0; S.kills = 0; S.bullets = [];
   S.sneakKey = S.sneakLatch = false; S.lastTap = 0;
@@ -649,6 +658,25 @@ function killPlayer(i) {
   audio.playAlert();
 }
 
+function updateMini(dt) {
+  const m = S.mini;
+  if (!m) return;
+  m.t += dt;
+  const t = m.t, f = S.fly;
+  f.wave = Math.max(0.7, 2.6 - t * 0.025);
+  f.count = [Math.min(2 + Math.floor(t / 25), 8), Math.min(3 + Math.floor(t / 15), 10)];
+  f.speed = [Math.min(140 + t * 1.2, 330), Math.min(210 + t * 2, 420)];
+  if ((m.starT -= dt) <= 0) {
+    m.starT = rand(0.8, 1.6);
+    S.coinList.push({ x: S.cam.x + S.view.w / 2 + 40, y: rand(48, S.map.h - 48), got: false, star: true });
+  }
+  for (let i = S.coinList.length - 1; i >= 0; i--) {
+    const c = S.coinList[i];
+    c.x -= 35 * dt;
+    if (c.got || c.x < S.cam.x - S.view.w / 2 - 80) S.coinList.splice(i, 1);
+  }
+}
+
 function updateCoins() {
   for (const c of S.coinList) {
     if (c.got || !S.players.some((p) => !p.dead && Math.hypot(p.x - c.x, p.y - c.y) < C.PLAYER_R + 9)) continue;
@@ -694,6 +722,7 @@ function step(dt) {
   followCamera();
   updateMechanics();
   updateBullets(dt);
+  updateMini(dt);
   updateCoins();
   if (S.coinNeed ? S.coins >= S.coinNeed : S.kills >= S.need && S.players.some((p) => !p.dead && touchesRect(p, S.goal))) return endLevel(true);
   if (S.cpRepeat) {
@@ -737,7 +766,20 @@ function endLevel(won) {
   finishLevel(won);
 }
 
+function finishMini() {
+  S.mode = 'failed'; S.coopMenu = false;
+  audio.setRolling(false);
+  if (!S.caught) audio.playAlert();
+  S.caught = false;
+  const key = S.mini.type + (inCoop() ? '_coop' : ''), m = store.get().mini ?? {}, score = S.coins, isBest = score > (m[key] ?? 0);
+  if (isBest) store.set({ mini: { ...m, [key]: score } });
+  const coop = inCoop();
+  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${score} star${score === 1 ? '' : 's'}`,
+    { resume: false, retry: !coop || net.role === 'host', next: false, pick: coop && net.role === 'host' });
+}
+
 function finishLevel(won) {
+  if (S.mini) return finishMini();
   S.mode = won ? 'won' : 'failed';
   S.coopMenu = false;
   audio.setRolling(false);
@@ -885,7 +927,7 @@ function drawWorld() {
     const d = Math.min(...S.players.filter((p) => !p.dead).map((p) => Math.hypot(p.x - (g.x + g.w / 2), p.y - (g.y + g.h / 2))));
     ga = clamp((260 - d) / 110, 0, 1);
   }
-  if (ga > 0 && !S.coinNeed) {
+  if (ga > 0 && !S.coinNeed && S.goal.w > 0) {
     ctx.globalAlpha = ga;
     const locked = S.kills < S.need;
     if (!locked) ctx.drawImage(IMG.glow, g.x - 32, g.y - 32, g.w + 64, g.h + 64);
@@ -956,8 +998,15 @@ function drawWorld() {
     if (c.got) continue;
     const kx = c.x + ox, ky = c.y + oy, pulse = 1 + 0.15 * Math.sin(performance.now() / 250 + c.x), gr = 26 * pulse;
     ctx.drawImage(IMG.glow, kx - gr, ky - gr, gr * 2, gr * 2);
-    ctx.fillStyle = '#ffd94d'; ctx.beginPath(); ctx.arc(kx, ky, 6, 0, TAU); ctx.fill();
-    ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(kx, ky, 3.5, 0, TAU); ctx.stroke();
+    ctx.fillStyle = '#ffd94d';
+    if (c.star) {
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) { const r = i % 2 ? 5 : 12, a = -Math.PI / 2 + Math.PI * i / 5; ctx.lineTo(kx + Math.cos(a) * r, ky + Math.sin(a) * r); }
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(kx, ky, 6, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(kx, ky, 3.5, 0, TAU); ctx.stroke();
+    }
   }
   if (S.key && !S.keyGot) {
     const kx = S.key.x + ox, ky = S.key.y + oy, pulse = 1 + 0.15 * Math.sin(performance.now() / 250), gr = 34 * pulse;
@@ -975,6 +1024,7 @@ function drawWorld() {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
   }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
+  if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`Stars: ${S.coins}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
   if (S.coinNeed) { ctx.fillStyle = S.coins >= S.coinNeed ? '#6effab' : '#ffd94d'; ctx.fillText(`Coins: ${S.coins}/${S.coinNeed}`, w / 2, 28); }
   if (S.shoot && S.need) { ctx.fillStyle = S.kills >= S.need ? '#6effab' : '#ffd94d'; ctx.fillText(`Enemies down: ${S.kills}/${S.need}`, w / 2, 28); }
   const wrap = (text) => {
@@ -1056,8 +1106,25 @@ function buildSelect() {
   }
 }
 
-const SCREENS = ['mainmenu', 'select', 'lobby', 'coopsel', 'popup', 'pause', 'game', 'settings', 'settingsbtn', 'backbtn'];
+const SCREENS = ['mainmenu', 'select', 'minisel', 'lobby', 'coopsel', 'popup', 'pause', 'game', 'settings', 'settingsbtn', 'backbtn'];
 function hideAll() { for (const id of SCREENS) show($(id), false); }
+
+function showMiniSelect() {
+  S.mode = 'minisel';
+  hideAll();
+  const coop = net.role === 'host', best = store.get().mini ?? {}, box = $('minibtns');
+  box.textContent = '';
+  for (const [id, name, note] of [['fly', 'Fly', 'Stars & drones'], ['collect', 'Collect', 'Coming soon'], ['royale', 'Battle Royale', 'Coming soon']]) {
+    const b = document.createElement('button'), score = best[id + (coop ? '_coop' : '')];
+    b.className = 'btn level';
+    if (id === 'fly') {
+      b.textContent = `${name}\n${score ? `Best: ${score}` : note}`;
+      b.onclick = () => (coop ? startCoop(id) : startLevel(id));
+    } else { b.textContent = `${name}\n${note}`; b.disabled = true; }
+    box.appendChild(b);
+  }
+  show($('minisel'), true); show($('backbtn'), true);
+}
 
 function showMenu() {
   netClose();
@@ -1279,6 +1346,7 @@ function showCoopPicker(highest) {
     }
     grid.appendChild(b);
   }
+  show($('minibtn2'), host);
   show($('coopsel'), true); show($('backbtn'), true);
 }
 
@@ -1315,7 +1383,8 @@ function snapshot() {
   return { t: 's', al: S.alarm ? 1 : 0, c: S.cpActive ? 1 : 0, k: S.keyGot ? 1 : 0, o: S.barriers.map((b) => (b.open ? 1 : 0)),
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0, Math.round((p.cd || 0) * 10) / 10]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0, v.dead ? 1 : 0]),
-    b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills, cn: S.coinList.map((c) => (c.got ? 1 : 0)),
+    b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills, cn: S.mini ? undefined : S.coinList.map((c) => (c.got ? 1 : 0)),
+    cm: S.mini ? S.coinList.filter((c) => !c.got).map((c) => [r(c.x), r(c.y)]) : undefined, cs: S.coins,
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
 }
 
@@ -1351,6 +1420,7 @@ function applySnapshot(m) {
   while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
   if (m.kl !== undefined) S.kills = m.kl;
+  if (m.cm) { S.coinList = m.cm.map(([x, y]) => ({ x, y, got: false, star: true })); if (m.cs > S.coins) audio.playCoin(); S.coins = m.cs; }
   if (m.cn) { m.cn.forEach((g, i) => { const c = S.coinList[i]; if (c && g && !c.got) { c.got = true; audio.playCoin(); } }); S.coins = S.coinList.filter((c) => c.got).length; }
   m.v.forEach(([x, y, ang, active, seen, windup, dead], i) => {
     const v = S.visions[i];
@@ -1399,7 +1469,9 @@ function netTick(dt) {
 $('coop').onclick = showLobby;
 $('host').onclick = hostGame;
 $('join').onclick = joinGame;
-$('backbtn').onclick = showMenu;
+$('backbtn').onclick = () => (S.mode === 'minisel' ? (net.role === 'host' ? showCoopPicker() : showSelect()) : showMenu());
+$('minibtn').onclick = showMiniSelect;
+$('minibtn2').onclick = showMiniSelect;
 $('pick').onclick = () => showCoopPicker();
 
 // ---------- main menu guard ----------
