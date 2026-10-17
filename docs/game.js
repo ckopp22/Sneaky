@@ -107,6 +107,16 @@ const audio = (() => {
   a.playWin = () => play(win, 'win', 0.8);
   a.playKey = () => play(keySnd, 'key', 0.7);
   a.playUnlock = () => play(unlockSnd, 'unlock', 0.7);
+  a.playPing = () => {
+    if (!a.sfx || !a.active) return;
+    try {
+      const ac = getAc(), t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'triangle'; o.frequency.value = 1568;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      o.connect(g).connect(ac.destination);
+      o.start(t); o.stop(t + 0.16);
+    } catch { /* ignore */ }
+  };
   a.playBoom = () => {
     const now = performance.now();
     if (!a.sfx || !a.active || now - (a.lastBoom || 0) < 80) return;
@@ -272,6 +282,12 @@ function spawnWave(dt) {
     Object.assign(d, { straight: true, active: false });
     S.drones.push(d);
   }
+}
+
+function addPlus(x, y) {
+  S.plus.push({ x, y, t0: performance.now() });
+  if (inCoop()) S.plusOut.push([Math.round(x), Math.round(y)]);
+  audio.playPing();
 }
 
 function explode(x, y) {
@@ -668,7 +684,7 @@ async function loadLevel(id, coop = false) {
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
   S.chaseAll = data.mini === 'collect';
   S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 0.7, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
-  S.fx = []; S.fxOut = [];
+  S.fx = []; S.fxOut = []; S.plus = []; S.plusOut = []; S.close = 0;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
   S.royale = data.mini === 'royale'; S.results = null;
   S.bots = (data.bots ?? []).map((a) => ({ ...at(a), dead: false, cd: rand(1, 3), strafe: 1, wt: 0 }));
@@ -808,6 +824,14 @@ function updateMini(dt) {
     f.count = [Math.min(1 + Math.floor(t / 40), 4), Math.min(2 + Math.floor(t / 20), 7)];
     f.speed = [Math.min(80 + t * 0.6, 150), Math.min(100 + t * 0.8, 185)];
     f.turn = Math.min(0.7 + t * 0.006, 1.4);
+    for (const d of S.drones) {
+      if (d.cc) continue;
+      let near = Infinity, who = null;
+      for (const p of live) { const dist = Math.hypot(p.x - d.x, p.y - d.y); if (dist < near) { near = dist; who = p; } }
+      if (!who) continue;
+      if (near < (d.md ?? Infinity)) { d.md = near; d.mw = who; }
+      if (d.md < 34 && near > 46) { d.cc = true; S.close++; addPlus(d.mw.x, d.mw.y); }
+    }
   } else if ((m.spawnT = (m.spawnT ?? 0) - dt) <= 0) {
     m.spawnT = Math.max(3, 9 - t * 0.05);
     const n = m.t < 1 ? 2 : Math.min(1 + Math.floor(t / 45), 4);
@@ -943,7 +967,7 @@ function finishMini() {
   const key = S.mini.type + (inCoop() ? '_coop' : ''), m = store.get().mini ?? {}, score = S.coins, isBest = score > (m[key] ?? 0);
   if (isBest) store.set({ mini: { ...m, [key]: score } });
   const coop = inCoop();
-  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${score} ${S.mini.type === 'fly' ? 'star' : 'coin'}${score === 1 ? '' : 's'}`,
+  showPopup(`${isBest ? 'New best! ' : 'Game over. '}${S.mini.type === 'fly' ? `${score} star${score === 1 ? '' : 's'} and ${S.close} close call${S.close === 1 ? '' : 's'}` : `${score} coin${score === 1 ? '' : 's'}`}`,
     { resume: false, retry: !coop || net.role === 'host', next: false, pick: coop && net.role === 'host' });
 }
 
@@ -1172,6 +1196,12 @@ function drawWorld() {
     ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.arc(e.x, e.y, 14 * (1 - k), 0, TAU); ctx.fill();
   }
   ctx.globalAlpha = 1;
+  S.plus = S.plus.filter((e) => nowt - e.t0 < 800);
+  if (S.plus.length) {
+    ctx.font = 'bold 24px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#6effab';
+    for (const e of S.plus) { const k = (nowt - e.t0) / 800; ctx.globalAlpha = 1 - k; ctx.fillText('+', e.x, e.y - 18 - 28 * k); }
+    ctx.globalAlpha = 1;
+  }
   for (const b of S.bots) {
     if (b.dead) continue;
     drawTrail(b, '#ffb36b', C.PLAYER_R, 1, 120);
@@ -1251,7 +1281,7 @@ function drawWorld() {
   }
   ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
   if (S.mini?.type === 'royale') { ctx.fillStyle = '#ffd94d'; ctx.fillText(`Alive: ${S.alive}`, w / 2, 28); }
-  else if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`${S.mini.type === 'fly' ? 'Stars' : 'Coins'}: ${S.coins}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
+  else if (S.mini) { ctx.fillStyle = '#ffd94d'; ctx.fillText(`${S.mini.type === 'fly' ? `Stars: ${S.coins}   Close calls: ${S.close}` : `Coins: ${S.coins}`}   Best: ${Math.max(S.coins, S.mini.best)}`, w / 2, 28); }
   if (S.coinNeed) { ctx.fillStyle = S.coins >= S.coinNeed ? '#6effab' : '#ffd94d'; ctx.fillText(`Coins: ${S.coins}/${S.coinNeed}`, w / 2, 28); }
   if (S.shoot && S.need) { ctx.fillStyle = S.kills >= S.need ? '#6effab' : '#ffd94d'; ctx.fillText(`Enemies down: ${S.kills}/${S.need}`, w / 2, 28); }
   const wrap = (text) => {
@@ -1618,7 +1648,7 @@ function snapshot() {
     a: [...S.plates, ...S.switches].map((t) => (t.on ? 1 : 0)), p: S.players.map((p) => [r(p.x), r(p.y), Math.round(p.alpha * 100) / 100, p.dead ? 1 : 0, p.sneak ? 1 : 0, Math.round((p.cd || 0) * 10) / 10]),
     v: S.visions.map((v) => [r(v.x), r(v.y), Math.round(v.ang * 1000) / 1000, v.active ? 1 : 0, v.seen > 0 ? 1 : 0, v.windup ? 1 : 0, v.dead ? 1 : 0]),
     b: S.bullets.map((b) => [r(b.x), r(b.y)]), kl: S.kills,
-    ex: S.fxOut.splice(0),
+    ex: S.fxOut.splice(0), px: S.plusOut.splice(0), cc: S.close,
     rb: S.royale ? S.bots.map((b) => [r(b.x), r(b.y), b.dead ? 1 : 0]) : undefined, rz: S.royale ? Math.round(S.zone.r) : 0, ra: S.alive, cn: S.mini ? undefined : S.coinList.map((c) => (c.got ? 1 : 0)),
     cm: S.mini ? S.coinList.filter((c) => !c.got).map((c) => [r(c.x), r(c.y)]) : undefined, cs: S.coins,
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
@@ -1657,6 +1687,8 @@ function applySnapshot(m) {
   while (S.chaseAll && S.visions.length < m.v.length) S.visions.push(makeChaser(...m.v[S.visions.length]));
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
   for (const [x, y] of m.ex || []) { S.fx.push({ x, y, t0: performance.now() }); if (Math.abs(x - S.cam.x) < S.view.w / 2 && Math.abs(y - S.cam.y) < S.view.h / 2) audio.playBoom(); }
+  for (const [x, y] of m.px || []) { S.plus.push({ x, y, t0: performance.now() }); audio.playPing(); }
+  if (m.cc !== undefined) S.close = m.cc;
   if (m.kl !== undefined) S.kills = m.kl;
   if (m.rb) {
     m.rb.forEach(([x, y, dead], i) => { const b = S.bots[i] || (S.bots[i] = { x, y }); b.tx = x; b.ty = y; b.dead = !!dead; });
