@@ -53,14 +53,40 @@ const audio = (() => {
     t.onended = () => { a.track = (a.track + 1) % tracks.length; playTrack(); };
     if (a.music && a.active) t.play().catch(() => { a.started = false; });
   };
-  a.start = () => { if (!a.started) { a.started = true; playTrack(); } };
+  a.start = () => {
+    const ac = getAc();
+    if (ac && ac.state !== 'running') ac.resume();
+    load(alert, 'alert'); load(win, 'win');
+    if (!a.started) { a.started = true; playTrack(); }
+  };
   a.duck = (on) => { a.ducked = on; tracks[a.track].volume = level(); };
   a.setMusic = (on) => {
     a.music = on; store.set({ music: on });
     if (on && a.started) tracks[a.track].play().catch(() => {}); else tracks[a.track].pause();
   };
   a.setSfx = (on) => { a.sfx = on; store.set({ sfx: on }); a.setRolling(false); };
-  const play = (s) => { if (a.sfx && a.active) { s.currentTime = 0; s.play().catch(() => {}); } };
+  const getAc = () => {
+    try { return a.ac || (a.ac = new (window.AudioContext || window.webkitAudioContext)()); } catch { return null; }
+  };
+  const bufs = new Map();
+  const load = (s, name) => {
+    const ac = getAc();
+    if (!ac || bufs.has(s)) return;
+    bufs.set(s, null);
+    fetch(`assets/audio/${name}.mp3`).then((r) => r.arrayBuffer()).then((d) => new Promise((ok, no) => ac.decodeAudioData(d, ok, no)))
+      .then((b) => bufs.set(s, b)).catch(() => bufs.delete(s));
+  };
+  const play = (s, name, vol) => {
+    if (!a.sfx || !a.active) return;
+    const ac = a.ac, b = bufs.get(s);
+    if (ac && b) {
+      if (ac.state !== 'running') ac.resume();
+      const src = ac.createBufferSource(), g = ac.createGain();
+      src.buffer = b; g.gain.value = vol;
+      src.connect(g).connect(ac.destination);
+      src.start();
+    } else { s.currentTime = 0; s.play().catch(() => {}); load(s, name); }
+  };
   a.setActive = (on) => {
     a.active = on;
     if (!on) {
@@ -70,12 +96,12 @@ const audio = (() => {
       tracks[a.track].play().catch(() => {});
     }
   };
-  a.playAlert = () => play(alert);
-  a.playWin = () => play(win);
+  a.playAlert = () => play(alert, 'alert', 0.63);
+  a.playWin = () => play(win, 'win', 0.8);
   a.playCelebrate = () => {
     if (!a.sfx || !a.active) return;
     try {
-      const ac = a.ac || (a.ac = new (window.AudioContext || window.webkitAudioContext)());
+      const ac = getAc();
       const t0 = ac.currentTime + 0.1;
       [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach((f, i) => {
         const t = t0 + i * 0.13, last = i === 7;
