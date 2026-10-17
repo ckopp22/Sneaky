@@ -9,7 +9,7 @@ const C = {
   GRACE: 0.15, GUARD_SPEED: 40, GUARD_FOV: 60, GUARD_RANGE: 120, GUARD_PAUSE: 1, LOOK_DEG: 70, GUARD_TURN_DEG: 75, GUARD_SWAY_DEG: 12, HEAR_RANGE: 200, TURN_PAUSE: 0.8, HEAR_DELAY: 1, GUARD_ACCEL: 60,
   ZOOM_SOLO: 1.5, ZOOM_COOP: 1.2, RAY_STEP_DEG: 2, PLAYER_LIGHT_SCALE: 4,
   BG: '#0a0d14', WALL: '#1f4057', GOAL: 'rgba(110,255,171,0.2)', PLAYER: '#d9e6ff', PLAYER2: '#5aa0ff', GUARD: '#e64d4d',
-  VISION: 'rgba(217,230,255,0.16)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
+  VISION: 'rgba(255,240,150,0.2)', LIGHT: 'rgba(255,217,77,0.26)', ALERT: 'rgba(255,38,38,0.4)',
   LAMP_ON: '#ffe666', LAMP_OFF: '#665c29', AMBIENT: 'rgb(4,5,9)', PLAYER_LIGHT: [204, 230, 255],
 };
 const TAU = Math.PI * 2;
@@ -721,6 +721,8 @@ function drawWorld() {
   const lp = camTarget();
   lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
   lctx.drawImage(tinted, lp.x + ox - lr, lp.y + oy - lr, lr * 2, lr * 2);
+  const cr = lr * 0.55;
+  lctx.drawImage(tinted, lp.x + ox - cr, lp.y + oy - cr, cr * 2, cr * 2);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'multiply';
   ctx.drawImage(lightMap, 0, 0, canvas.width, canvas.height);
@@ -1121,26 +1123,42 @@ $('pick').onclick = () => showCoopPicker();
 
 // ---------- main menu guard ----------
 const menuCanvas = $('menuguard'), mctx = menuCanvas.getContext('2d');
-const menuGuard = { heading: 0, last: 0 };
+const menuGuard = { heading: 0, last: 0, trail: [] };
 function drawMenuGuard(now) {
-  const t = now / 1000, W = menuCanvas.width, H = menuCanvas.height;
+  const t = now / 1000, dpr = Math.min(window.devicePixelRatio || 1, 2), cw = window.innerWidth, ch = window.innerHeight;
+  if (menuCanvas.width !== Math.round(cw * dpr) || menuCanvas.height !== Math.round(ch * dpr)) { menuCanvas.width = Math.round(cw * dpr); menuCanvas.height = Math.round(ch * dpr); }
+  mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const sp = $('menuspot').getBoundingClientRect(), W = sp.width, H = sp.height;
   const dt = Math.min(t - menuGuard.last, 0.1);
   menuGuard.last = t;
-  mctx.clearRect(0, 0, W, H);
-  const gx = W / 2 + Math.sin(t * 0.55) * W * 0.3, gy = H * 0.2 + Math.sin(t * 9) * 2;
+  mctx.clearRect(0, 0, cw, ch);
+  const gx = sp.left + W / 2 + Math.sin(t * 0.55) * W * 0.3, gy = sp.top + H * 0.5 + Math.sin(t * 9) * 1;
   const want = Math.cos(t * 0.55) >= 0 ? 0 : Math.PI;
   menuGuard.heading += clamp(angleDiff(menuGuard.heading, want), -rad(150) * dt, rad(150) * dt);
-  const beam = Math.PI / 2 + Math.sin(t * 1.4) * rad(50), half = rad(32), range = H * 0.75;
+  const tr = menuGuard.trail, life = 650;
+  tr.push({ x: gx, y: gy, t: now });
+  while (tr.length && now - tr[0].t > life) tr.shift();
+  mctx.fillStyle = '#ff2626';
+  for (const q of tr) {
+    const f = 1 - (now - q.t) / life;
+    mctx.globalAlpha = f * 0.4;
+    mctx.beginPath(); mctx.arc(q.x, q.y, 7 * (0.4 + 0.5 * f), 0, TAU); mctx.fill();
+  }
+  mctx.globalAlpha = 1;
+  const half = rad(32), range = 170, beam = menuGuard.heading + Math.sin(t * 1.6) * rad(18);
   mctx.save();
   mctx.translate(gx, gy);
   const grad = mctx.createRadialGradient(0, 0, 0, 0, 0, range);
-  grad.addColorStop(0, 'rgba(217,230,255,0.45)'); grad.addColorStop(1, 'rgba(217,230,255,0)');
+  grad.addColorStop(0, 'rgba(255,240,150,0.45)'); grad.addColorStop(1, 'rgba(255,240,150,0)');
   mctx.fillStyle = grad;
   mctx.beginPath(); mctx.moveTo(0, 0); mctx.arc(0, 0, range, beam - half, beam + half); mctx.closePath(); mctx.fill();
+  const hz = mctx.createRadialGradient(0, 0, 4, 0, 0, 34);
+  hz.addColorStop(0, 'rgba(255,38,38,0.4)'); hz.addColorStop(1, 'rgba(255,38,38,0)');
+  mctx.fillStyle = hz; mctx.beginPath(); mctx.arc(0, 0, 34, 0, TAU); mctx.fill();
   const pulse = 1 + 0.07 * Math.sin(t * 9);
   mctx.fillStyle = C.GUARD; mctx.beginPath();
   for (let i = 0; i < 16; i++) {
-    const r = (i % 2 === 0 ? 30 : 10) * pulse, a = menuGuard.heading + Math.PI * i / 8;
+    const r = (i % 2 === 0 ? 15 : 5) * pulse, a = menuGuard.heading + Math.PI * i / 8;
     mctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
   }
   mctx.closePath(); mctx.fill();
