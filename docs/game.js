@@ -300,7 +300,7 @@ function updateShooters(dt) {
   spawnWave(dt);
   for (const v of S.visions) {
     if (v.dead) continue;
-    if (S.alarm && v.kind === 'guard' && !v.turret && !v.shoot) v.shoot = { every: 3.5, speed: C.DRONE_SPEED, t: Math.random() * 3 };
+    if (S.alarm && S.mini?.type !== 'collect' && v.kind === 'guard' && !v.turret && !v.shoot) v.shoot = { every: 3.5, speed: C.DRONE_SPEED, t: Math.random() * 3 };
     const s = v.shoot;
     if (!s) continue;
     s.t += dt;
@@ -639,7 +639,7 @@ function miniData(type, coop) {
   else for (const [x, y] of [[8, 6], [18, 6], [28, 6], [38, 6], [48, 6], [13, 16], [23, 16], [43, 16], [8, 26], [18, 26], [28, 26], [38, 26], [48, 26]]) walls.push([x, y, 2, 3]);
   const d = { id: type, name: fly ? 'Fly' : 'Collect', size: [w, h], tileSize: 32, goal: { rect: [0, 0, 0, 0] }, guards: [], lights: [], diff: 1, mini: type, walls,
     hint: fly ? 'Fly anywhere and grab the stars. Drones lock on, so turn to dodge them. Red triangles show where they come from.'
-      : 'Grab as many coins as you can. Guards hunt you down, and more arrive the longer you last.' };
+      : 'Grab as many coins as you can. Guards wander with big light cones. If one spots you, the alarm sounds and they all chase you. More arrive over time.' };
   if (coop) d.playerStarts = [[w / 2 - 1, m], [w / 2 + 1, m]]; else d.playerStart = [w / 2, m];
   return d;
 }
@@ -651,7 +651,7 @@ async function loadLevel(id, coop = false) {
   S.map = { w: data.size[0] * tile, h: data.size[1] * tile };
   S.walls = data.walls.map(rect);
   S.diff = data.diff ?? Math.min(1 + 0.035 * Math.max(0, id - 5), 1.75);
-  S.roam = id > 5;
+  S.roam = id > 5 || id === 'collect';
   S.maze = !!data.maze;
   const trig = (list) => (list ?? []).map((o) => ({ id: o.id, ...rect(o.rect), on: false }));
   const barrier = (list, kind) => (list ?? []).map((o) => ({ id: o.id, kind, ...rect(o.rect), open: false }));
@@ -682,7 +682,7 @@ async function loadLevel(id, coop = false) {
   S.water = !!data.water; audio.water = S.water;
   S.alarmLevel = !!data.alarm; S.alarm = false; S.alarmK = data.mini && data.mini !== 'collect' ? 1 : 0;
   S.mini = data.mini ? { type: data.mini, t: 0, starT: 1, best: (store.get().mini ?? {})[data.mini + (coop ? '_coop' : '')] ?? 0 } : null;
-  S.chaseAll = data.mini === 'collect';
+  S.chaseAll = false;
   S.fly = data.mini === 'fly' ? { wave: 3.6, count: [1, 2], speed: [80, 100], turn: 0.7, t: 2 } : data.fly ? { ...data.fly, t: 2 } : null;
   S.fx = []; S.fxOut = []; S.plus = []; S.plusOut = []; S.close = 0;
   S.coinList = (data.coins ?? []).map((a) => ({ ...at(a), got: false })); S.coinNeed = data.coinNeed ?? 0; S.coins = 0;
@@ -750,8 +750,8 @@ function killPlayer(i) {
 
 function makeChaser(x, y, speed = C.GUARD_SPEED) {
   const t = S.nav.tile;
-  const g = makeGuard({ path: [[x / t - 0.5, y / t - 0.5]], fov: 50, range: 90, speed }, t), age = S.mini ? S.mini.t : 0;
-  return Object.assign(g, { active: false, glow: 56, shoot: { every: Math.max(2.5, 5.5 - age * 0.02), speed: Math.min(80 + age * 0.4, 130), t: Math.random() * 3 } });
+  const p = [x / t - 0.5, y / t - 0.5];
+  return makeGuard({ wander: [p, p], fov: 70, range: 170, speed }, t);
 }
 
 function killFighter(f) {
@@ -941,7 +941,9 @@ function step(dt) {
     if (!S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); S.visions.push(spawnDefender()); }
     spotted.clear();
   }
-  if (S.alarmLevel || S.fly || S.chaseAll) {
+  if (S.mini?.type === 'collect' && !S.alarm && spotted.size) { S.alarm = true; audio.playAlert(); }
+  if (S.mini?.type === 'collect') spotted.clear();
+  if (S.alarmLevel || S.fly) {
     droneHit.clear();
     for (const d of S.drones) S.players.forEach((p, i) => {
       if (!p.dead && p.invuln <= 0 && Math.hypot(p.x - d.x, p.y - d.y) < C.PLAYER_R + 6) droneHit.add(i);
@@ -1734,8 +1736,8 @@ function applySnapshot(m) {
       return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0, active: !(S.fly || S.chaseAll || S.royale) });
     });
   }
-  while (S.alarm && S.visions.length < m.v.length) S.visions.push(spawnDefender());
-  while (S.chaseAll && S.visions.length < m.v.length) S.visions.push(makeChaser(...m.v[S.visions.length]));
+  while (S.alarm && S.mini?.type !== 'collect' && S.visions.length < m.v.length) S.visions.push(spawnDefender());
+  while (S.mini?.type === 'collect' && S.visions.length < m.v.length) S.visions.push(makeChaser(...m.v[S.visions.length]));
   S.bullets = (m.b || []).map(([x, y]) => ({ x, y }));
   for (const [x, y] of m.ex || []) { S.fx.push({ x, y, t0: performance.now() }); if (Math.abs(x - S.cam.x) < S.view.w / 2 && Math.abs(y - S.cam.y) < S.view.h / 2) audio.playBoom(); }
   for (const [x, y] of m.px || []) { S.plus.push({ x, y, t0: performance.now() }); audio.playPing(); }
