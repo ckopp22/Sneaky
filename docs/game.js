@@ -658,7 +658,7 @@ async function loadLevel(id, coop = false) {
   S.plates = trig(data.plates); S.switches = trig(data.switches);
   S.barriers = [...barrier(data.gates, 'gate'), ...barrier(data.doors, 'door'), ...barrier(data.lock ? [{ id: 'k', rect: data.lock.rect }] : [], 'lock')];
   S.key = data.key ? { x: (data.key[0] + 0.5) * tile, y: (data.key[1] + 0.5) * tile } : null;
-  S.keyGot = false;
+  S.keyGot = false; S.continued = false;
   updateSolids();
   S.goal = rect(data.goal.rect);
   const ps = data.playerStart ?? data.playerStarts[0];
@@ -997,6 +997,7 @@ function finishLevel(won) {
     audio.playWin();
     if (S.key) audio.playUnlock();
     if (!inCoop() && S.level > (store.get().highest ?? 0)) store.set({ highest: S.level });
+    if (!S.continued && (!inCoop() || net.role === 'host')) { const k = inCoop() ? 'coopGold' : 'gold'; store.set({ [k]: { ...(store.get()[k] ?? {}), [S.level]: 1 } }); }
     if (inCoop() && net.role === 'host' && S.level > (store.get().coopHighest ?? 0)) store.set({ coopHighest: S.level });
   } else if (!S.caught) {
     audio.playAlert();
@@ -1008,7 +1009,7 @@ function finishLevel(won) {
   if (won) startConfetti();
   if (beatAll) audio.playCelebrate();
   showPopup(beatAll ? 'Beat the Game! Well Done' : won ? 'Level Complete!' : 'Bummer... try again?',
-    { resume: false, retry: !won && (!coop || net.role === 'host'), next: won && S.level < (coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT) && (!coop || net.role === 'host'),
+    { resume: false, cont: !won && (!coop || net.role === 'host'), retry: !won && (!coop || net.role === 'host'), next: won && S.level < (coop ? C.COOP_LEVEL_COUNT : C.LEVEL_COUNT) && (!coop || net.role === 'host'),
       pick: coop && net.role === 'host' });
 }
 
@@ -1396,7 +1397,7 @@ function showPopup(title, buttons) {
     if (line[0] === '#') d.className = 'pbig'; else if (line[0] === '~') d.className = 'psmall';
     h.appendChild(d);
   }
-  for (const id of ['resume', 'retry', 'next', 'pick']) show($(id), !!buttons[id]);
+  for (const id of ['resume', 'cont', 'retry', 'next', 'pick']) show($(id), !!buttons[id]);
   $('menu').textContent = inCoop() || net.role ? 'Leave' : 'Levels';
   show($('popup'), true);
 }
@@ -1408,11 +1409,11 @@ function refreshToggles() {
 }
 
 function buildSelect() {
-  const grid = $('grid'), highest = store.get().highest ?? 0;
+  const grid = $('grid'), highest = store.get().highest ?? 0, gold = store.get().gold ?? {};
   grid.textContent = '';
   for (let id = 1; id <= C.LEVEL_COUNT; id++) {
     const b = document.createElement('button');
-    b.className = 'btn level' + (id <= highest ? ' done' : '');
+    b.className = 'btn level' + (id <= highest ? ' done' : '') + (gold[id] ? ' gold' : '');
     if (DEV || id <= highest + 1) {
       b.textContent = `${id}\n${S.names[id] ?? ''}`;
       b.onclick = () => startLevel(id);
@@ -1538,6 +1539,12 @@ $('sfx').onclick = () => { audio.setSfx(!audio.sfx); refreshToggles(); };
 $('music').onclick = () => { audio.setMusic(!audio.music); refreshToggles(); };
 $('pause').onclick = pauseGame;
 $('resume').onclick = resumeGame;
+function doContinue() {
+  S.continued = true; S.drones = []; S.alarm = false; S.chaseAll = false; S.failT = 1.2;
+  S.players.forEach((p) => Object.assign(p, { dead: false, invuln: 3 }));
+  hideAll(); show($('game'), true); show($('pause'), true); S.mode = 'playing';
+}
+$('cont').onclick = () => { if (inCoop()) netSend({ t: 'cont' }); doContinue(); };
 $('retry').onclick = () => (inCoop() ? startCoop(S.level) : startLevel(S.level));
 $('next').onclick = () => (inCoop() ? startCoop(S.level + 1) : startLevel(S.level + 1));
 $('menu').onclick = () => (inCoop() || net.role ? showMenu() : showSelect());
@@ -1556,7 +1563,7 @@ $('share').onclick = async () => {
 };
 $('reset').onclick = () => {
   if ($('reset').textContent === 'Reset Progress') { $('reset').textContent = 'Tap again to confirm'; return; }
-  store.set({ highest: 0, coopHighest: 0 });
+  store.set({ highest: 0, coopHighest: 0, gold: {}, coopGold: {} });
   closeSettings();
 };
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1642,19 +1649,19 @@ function enterGame() {
   S.mode = 'playing';
 }
 
-function showCoopPicker(highest) {
+function showCoopPicker(highest, goldIn) {
   const host = net.role === 'host';
-  if (host) { highest = store.get().coopHighest ?? 0; netSend({ t: 'picker', highest }); }
+  if (host) { highest = store.get().coopHighest ?? 0; netSend({ t: 'picker', highest, gold: store.get().coopGold ?? {} }); }
   S.mode = 'picker'; S.coopMenu = false;
   audio.setRolling(false); audio.duck(false);
   hideAll();
   $('cstatus').textContent = host ? 'Choose a Level' : 'Host is choosing a level...';
-  const grid = $('cgrid');
+  const grid = $('cgrid'), gold = host ? store.get().coopGold ?? {} : goldIn ?? {};
   grid.className = host ? '' : 'watch';
   grid.textContent = '';
   for (let id = 1; id <= C.COOP_LEVEL_COUNT; id++) {
     const b = document.createElement('button');
-    b.className = 'btn level' + (id <= highest ? ' done' : '');
+    b.className = 'btn level' + (id <= highest ? ' done' : '') + (gold[id] ? ' gold' : '');
     if (DEV || id <= highest + 1) {
       b.textContent = `${id}\n${C.COOP_NAMES[id - 1]}`;
       b.onclick = () => startCoop(id);
@@ -1670,9 +1677,10 @@ function showCoopPicker(highest) {
 function onNetData(m) {
   if (!m || typeof m !== 'object') return;
   if (net.role === 'guest') {
-    if (m.t === 'picker') showCoopPicker(Number(m.highest) || 0);
+    if (m.t === 'picker') showCoopPicker(Number(m.highest) || 0, m.gold);
     else if (m.t === 'start') guestStart(m.level);
     else if (m.t === 's' && S.mode === 'playing') applySnapshot(m);
+    else if (m.t === 'cont') doContinue();
     else if (m.t === 'end') { S.results = m.pl ?? null; finishLevel(!!m.won); }
   } else if (m.t === 'i') {
     const x = Number(m.x) || 0, y = Number(m.y) || 0, len = Math.hypot(x, y);

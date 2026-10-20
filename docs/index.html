@@ -46,6 +46,7 @@ html, body { margin: 0; height: 100%; min-height: 100vh; min-height: 100lvh; bac
 .level:active { border-image-source: url(assets/ui/buttons/level_open_pressed.png); }
 .level.done { border-image-source: url(assets/ui/buttons/level_done.png); border-image-slice: 8; position: relative;
   background: rgb(48,140,92); background-clip: padding-box; }
+.level.gold { outline: 4px solid #ffd23f; outline-offset: -4px; box-shadow: 0 0 10px #ffd23f; }
 .level.done::after { content: ""; position: absolute; top: 2px; right: 2px; width: 20px; height: 20px;
   background: url(assets/ui/icons/icon_check.png) center / contain no-repeat; image-rendering: pixelated; }
 .level img { width: 24px; height: 24px; margin: 4px auto 0; display: block; image-rendering: pixelated; }
@@ -169,6 +170,7 @@ html, body { margin: 0; height: 100%; min-height: 100vh; min-height: 100lvh; bac
   <div class="panel">
     <h2 id="ptitle"></h2>
     <button class="btn success" id="resume">Resume</button>
+    <button class="btn success" id="cont">Continue</button>
     <button class="btn primary" id="retry">Try Again</button>
     <button class="btn success" id="next">Next Level</button>
     <button class="btn secondary" id="pick">Choose Level</button>
