@@ -1571,19 +1571,28 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ---------- co-op (PeerJS, host-authoritative) ----------
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const net = { role: null, peer: null, conn: null, sendT: 0, inputT: 0 };
+const net = { role: null, peer: null, conn: null, fast: null, seq: 0, rseq: 0, ival: 1 / 30, lastSnap: 0, sendT: 0, inputT: 0 };
 const inCoop = () => net.role !== null && S.players.length === 2;
 const lobbyStatus = (text) => { $('lobbystatus').textContent = text; };
 
 function netSend(msg) { if (net.conn && net.conn.open) net.conn.send(msg); }
+// snapshots/inputs go over an unreliable channel (no head-of-line blocking); stale ones are dropped by seq
+function netSendFast(msg) {
+  msg.q = ++net.seq;
+  const c = net.fast && net.fast.open ? net.fast : net.conn;
+  if (c && c.open) c.send(msg);
+}
 
 function netClose() {
-  try { if (net.conn) net.conn.close(); if (net.peer) net.peer.destroy(); } catch { /* ignore */ }
-  Object.assign(net, { role: null, peer: null, conn: null, sendT: 0, inputT: 0 });
+  try { if (net.fast) net.fast.close(); if (net.conn) net.conn.close(); if (net.peer) net.peer.destroy(); } catch { /* ignore */ }
+  Object.assign(net, { role: null, peer: null, conn: null, fast: null, seq: 0, rseq: 0, ival: 1 / 30, lastSnap: 0, sendT: 0, inputT: 0 });
 }
 
 function wire(conn) {
-  conn.on('data', onNetData);
+  conn.on('data', (m) => {
+    if (m && m.q !== undefined) { if (m.q <= net.rseq) return; net.rseq = m.q; }
+    onNetData(m);
+  });
   conn.on('close', onPartnerLeft);
   conn.on('error', onPartnerLeft);
 }
@@ -1607,6 +1616,7 @@ function hostGame() {
   peer.on('open', () => { $('code').textContent = code; lobbyStatus('Share this code. Waiting for player 2...'); });
   peer.on('error', (e) => { if (e.type === 'unavailable-id') hostGame(); else lobbyStatus('Connection error: ' + e.type); });
   peer.on('connection', (conn) => {
+    if (conn.metadata && conn.metadata.fast) { net.fast = conn; conn.on('data', (m) => { if (m && m.q > net.rseq) { net.rseq = m.q; onNetData(m); } }); return; }
     if (net.conn) { conn.close(); return; }
     net.conn = conn;
     wire(conn);
@@ -1627,6 +1637,8 @@ function joinGame() {
     const conn = net.conn = peer.connect('sneaky-' + code, { reliable: true });
     wire(conn);
     conn.on('open', () => lobbyStatus('Connected. Waiting for host...'));
+    const fast = net.fast = peer.connect('sneaky-' + code, { reliable: false, metadata: { fast: 1 } });
+    fast.on('data', (m) => { if (m && m.q > net.rseq) { net.rseq = m.q; onNetData(m); } });
   });
   peer.on('error', (e) => lobbyStatus(e.type === 'peer-unavailable' ? 'Room not found.' : 'Connection error: ' + e.type));
 }
@@ -1715,7 +1727,24 @@ function snapshot() {
     d: S.drones.map((d) => [r(d.x), r(d.y), d.seen > 0 ? 1 : 0]) };
 }
 
+// remote entities glide from where they are to each new snapshot over one snapshot interval
+function setTgt(o, x, y, ang) {
+  if (o.tx === undefined) { o.x = x; o.y = y; if (ang !== undefined) o.ang = ang; }
+  o.fx = o.x; o.fy = o.y; o.tx = x; o.ty = y; o.u = 0;
+  if (ang !== undefined) { o.fa = o.ang; o.tang = ang; }
+}
+function stepTgt(o, dt) {
+  if (o.tx === undefined) return;
+  o.u += dt / net.ival;
+  const e = Math.min(o.u, 1);
+  o.x = o.fx + (o.tx - o.fx) * e; o.y = o.fy + (o.ty - o.fy) * e;
+  if (o.tang !== undefined) o.ang = o.fa + angleDiff(o.fa, o.tang) * e;
+}
+
 function applySnapshot(m) {
+  const now = performance.now();
+  if (net.lastSnap) net.ival = clamp(net.ival * 0.8 + (now - net.lastSnap) / 1000 * 0.2, 0.03, 0.15);
+  net.lastSnap = now;
   S.cpActive = !!m.c;
   if (m.al && !S.alarm) audio.playAlert();
   S.alarm = !!m.al;
@@ -1732,16 +1761,17 @@ function applySnapshot(m) {
     if (i === S.me) {
       if (q.dead) { q.x = x; q.y = y; return; }
       const ex = x - q.x, ey = y - q.y;
-      if (Math.hypot(ex, ey) > 40) { q.x = x; q.y = y; } else { q.x += ex * 0.2; q.y += ey * 0.2; }
+      const moving = inputVector(), err = Math.hypot(ex, ey);
+      if (err > 40) { q.x = x; q.y = y; } else if (!moving.x && !moving.y) { q.x += ex * 0.2; q.y += ey * 0.2; }
     } else {
-      if (q.tx === undefined) { q.x = x; q.y = y; }
-      q.tx = x; q.ty = y;
+      setTgt(q, x, y);
     }
   });
   if (m.d) {
     S.drones = m.d.map(([x, y, seen], i) => {
       const o = S.drones[i] || makeDrone(x, y, 0, 0);
-      return Object.assign(o, { tx: x, ty: y, seen: seen ? 1 : 0, active: !(S.fly || S.chaseAll || S.royale) });
+      setTgt(o, x, y);
+      return Object.assign(o, { seen: seen ? 1 : 0, active: !(S.fly || S.chaseAll || S.royale) });
     });
   }
   while (S.alarm && S.mini?.type !== 'collect' && S.visions.length < m.v.length) S.visions.push(spawnDefender());
@@ -1752,7 +1782,7 @@ function applySnapshot(m) {
   if (m.cc !== undefined) S.close = m.cc;
   if (m.kl !== undefined) S.kills = m.kl;
   if (m.rb) {
-    m.rb.forEach(([x, y, dead], i) => { const b = S.bots[i] || (S.bots[i] = { x, y }); b.tx = x; b.ty = y; b.dead = !!dead; });
+    m.rb.forEach(([x, y, dead], i) => { const b = S.bots[i] || (S.bots[i] = { x, y }); setTgt(b, x, y); b.dead = !!dead; });
     S.zone.r = m.rz; S.alive = m.ra;
   }
   if (m.cm) { S.coinList = m.cm.map(([x, y]) => ({ x, y, got: false, star: S.mini.type === 'fly' })); if (m.cs > S.coins) audio.playCoin(); S.coins = m.cs; }
@@ -1761,8 +1791,8 @@ function applySnapshot(m) {
     const v = S.visions[i];
     if (!v) return;
     v.dead = !!dead;
-    if (v.tx === undefined) { v.x = x; v.y = y; v.ang = ang; }
-    Object.assign(v, { tx: x, ty: y, tang: ang, active: !!active, seen: seen ? 1 : 0, windup: !!windup });
+    setTgt(v, x, y, ang);
+    Object.assign(v, { active: !!active, seen: seen ? 1 : 0, windup: !!windup });
   });
 }
 
@@ -1775,17 +1805,15 @@ function guestStep(dt) {
   audio.setRolling((dir.x !== 0 || dir.y !== 0) && !me().sneak);
   S.players.forEach((q, i) => {
     if (q.ta !== undefined) q.alpha += (q.ta - q.alpha) * k;
-    if (i !== S.me && q.tx !== undefined) { q.x += (q.tx - q.x) * k; q.y += (q.ty - q.y) * k; }
+    if (i !== S.me) stepTgt(q, dt);
   });
-  for (const b of S.bots) if (b.tx !== undefined) { b.x += (b.tx - b.x) * k; b.y += (b.ty - b.y) * k; }
+  for (const b of S.bots) stepTgt(b, dt);
   for (const v of S.visions) {
-    if (v.tx !== undefined) {
-      v.x += (v.tx - v.x) * k; v.y += (v.ty - v.y) * k; v.ang += angleDiff(v.ang, v.tang) * k;
-    }
+    stepTgt(v, dt);
     if (v.active) updatePoly(v); else v.poly = [];
   }
   for (const d of S.drones) {
-    if (d.tx !== undefined) { d.x += (d.tx - d.x) * k; d.y += (d.ty - d.y) * k; }
+    stepTgt(d, dt);
     if (d.active) updatePoly(d); else d.poly = [];
   }
   followCamera();
@@ -1795,10 +1823,10 @@ function netTick(dt) {
   if (!inCoop() || !net.conn || !net.conn.open) return;
   if (net.role === 'host') {
     net.sendT += dt;
-    if (net.sendT >= 0.05) { net.sendT = 0; netSend(snapshot()); }
+    if (net.sendT >= 1 / 30) { net.sendT = 0; netSendFast(snapshot()); }
   } else {
     net.inputT += dt;
-    if (net.inputT >= 1 / 30) { net.inputT = 0; const v = inputVector(); netSend({ t: 'i', x: v.x, y: v.y, s: S.sneakKey || S.sneakLatch ? 1 : 0 }); }
+    if (net.inputT >= 1 / 30) { net.inputT = 0; const v = inputVector(); netSendFast({ t: 'i', x: v.x, y: v.y, s: S.sneakKey || S.sneakLatch ? 1 : 0 }); }
   }
 }
 
